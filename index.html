@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Stack Game - Multiplayer</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+            display: block;
+            margin: 0 auto;
+        }
+        body {
+            background: #1d1d1d;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+
+        let camera = {
+            y: 0,
+            targetY: 0
+        };
+
+        let movingBlock = {
+            x: canvas.width / 2,
+            y: 500,
+            width: 200,
+            height: 40,
+            direction: 1,
+            speed: 8
+        };
+
+        let stackedBlocks = [{
+            x: canvas.width / 2,
+            y: 540,
+            width: 200,
+            height: 40,
+            color: '#00ff00'
+        }];
+
+        const players = [
+            { name: "Player 1", score: 0, color: "#3498db" },
+            { name: "Player 2", score: 0, color: "#e74c3c" }
+        ];
+        let currentPlayer = 0; // Index of the current player
+
+        let gameOver = false;
+        let roundWinner = null;
+
+        function draw() {
+            ctx.fillStyle = '#1d1d1d';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Apply camera transform
+            ctx.save();
+            ctx.translate(0, -camera.y);
+
+            // Draw all blocks
+            stackedBlocks.forEach(block => {
+                ctx.fillStyle = block.color;
+                ctx.fillRect(block.x - block.width / 2, block.y, block.width, block.height);
+            });
+
+            // Draw moving block
+            ctx.fillStyle = players[currentPlayer].color;
+            ctx.fillRect(movingBlock.x - movingBlock.width / 2, movingBlock.y, movingBlock.width, movingBlock.height);
+
+            ctx.restore();
+
+            // Draw scores and turn indicators
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '18px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(`${players[0].name}: ${players[0].score}`, 10, 30);
+            ctx.textAlign = 'right';
+            ctx.fillText(`${players[1].name}: ${players[1].score}`, canvas.width - 10, 30);
+
+            // Indicate current player's turn
+            ctx.textAlign = 'center';
+            ctx.font = '20px Arial';
+            ctx.fillStyle = players[currentPlayer].color;
+            ctx.fillText(`${players[currentPlayer].name}'s Turn`, canvas.width / 2, 30);
+
+            // Draw Game Over message
+            if (gameOver) {
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '32px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(`${roundWinner} Wins! Click to restart`, canvas.width / 2, canvas.height / 2);
+                ctx.textAlign = 'left';
+            }
+        }
+
+        function update() {
+            if (!gameOver) {
+                movingBlock.x += movingBlock.speed * movingBlock.direction;
+
+                if (movingBlock.x >= canvas.width - movingBlock.width / 2 || movingBlock.x <= movingBlock.width / 2) {
+                    movingBlock.direction *= -1;
+                }
+            }
+
+            // Smooth camera movement
+            camera.y += (camera.targetY - camera.y) * 0.1;
+        }
+
+        function isCompletelyOutOfBounds(moving, previous) {
+            const movingLeft = moving.x - movingBlock.width / 2;
+            const movingRight = moving.x + movingBlock.width / 2;
+            const prevLeft = previous.x - previous.width / 2;
+            const prevRight = previous.x + previous.width / 2;
+
+            return movingRight < prevLeft || movingLeft > prevRight;
+        }
+
+        function calculateOverlap() {
+            const prevBlock = stackedBlocks[stackedBlocks.length - 1];
+
+            const movingLeft = movingBlock.x - movingBlock.width / 2;
+            const movingRight = movingBlock.x + movingBlock.width / 2;
+            const prevLeft = prevBlock.x - prevBlock.width / 2;
+            const prevRight = prevBlock.x + prevBlock.width / 2;
+
+            const overlapLeft = Math.max(movingLeft, prevLeft);
+            const overlapRight = Math.min(movingRight, prevRight);
+
+            return {
+                width: overlapRight - overlapLeft,
+                x: (overlapLeft + overlapRight) / 2
+            };
+        }
+
+        canvas.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+
+            if (gameOver) {
+                // Reset game state
+                camera = { y: 0, targetY: 0 };
+                movingBlock = {
+                    x: canvas.width / 2,
+                    y: 500,
+                    width: 200,
+                    height: 40,
+                    direction: 1,
+                    speed: 8
+                };
+                stackedBlocks = [{
+                    x: canvas.width / 2,
+                    y: 540,
+                    width: 200,
+                    height: 40,
+                    color: '#00ff00'
+                }];
+                players.forEach(player => player.score = 0);
+                currentPlayer = 0;
+                gameOver = false;
+                return;
+            }
+
+            const prevBlock = stackedBlocks[stackedBlocks.length - 1];
+
+            if (isCompletelyOutOfBounds(movingBlock, prevBlock)) {
+                gameOver = true;
+                roundWinner = players[(currentPlayer + 1) % 2].name; // Other player wins
+                return;
+            }
+
+            const overlap = calculateOverlap();
+            const newWidth = Math.max(overlap.width, 10); // Ensure minimum width
+
+            // Add new block
+            stackedBlocks.push({
+                x: overlap.x,
+                y: movingBlock.y,
+                width: newWidth,
+                height: movingBlock.height,
+                color: players[currentPlayer].color
+            });
+
+            // Update moving block
+            movingBlock.width = newWidth;
+            movingBlock.y -= movingBlock.height;
+            movingBlock.x = canvas.width / 2; // Reset position to center
+            movingBlock.speed += 0.2; // Increment speed slightly
+
+            // Camera follows
+            camera.targetY = movingBlock.y - canvas.height + 200;
+
+            // Increment score
+            players[currentPlayer].score++;
+
+            // Switch players after every turn
+            currentPlayer = (currentPlayer + 1) % 2;
+        });
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
