@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glow Snake Multiplayer</title>
+    <script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Arial', sans-serif;
+            background-color: #1a1a1a;
+        }
+        
+        .game-container {
+            position: relative;
+            width: 800px;
+            text-align: center;
+        }
+
+        #gameCanvas {
+            background-color: #2d2d2d;
+            border: 4px solid #444;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
+        }
+
+        .scoreboard {
+            display: flex;
+            justify-content: space-between;
+            padding: 20px;
+            margin-bottom: 20px;
+            background-color: #333;
+            border-radius: 8px;
+            color: white;
+        }
+
+        .profile {
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 20px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+
+        .profile.left {
+            background-color: rgba(255, 0, 0, 0.2);
+            border: 2px solid #ff0000;
+        }
+
+        .profile.right {
+            background-color: rgba(0, 0, 255, 0.2);
+            border: 2px solid #0000ff;
+        }
+
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+            color: white;
+        }
+
+        .game-over h2 {
+            color: #fff;
+            margin-bottom: 20px;
+        }
+
+        .restart-btn {
+            padding: 10px 20px;
+            font-size: 18px;
+            background: linear-gradient(45deg, #2ecc71, #27ae60);
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin-top: 20px;
+        }
+
+        .restart-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .controls-info {
+            margin-top: 20px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .waiting-message {
+            color: white;
+            font-size: 24px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: none;
+        }
+
+        .timers {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            z-index: 100;
+        }
+
+        .main-timer {
+            margin-bottom: 10px;
+            transition: color 0.3s ease;
+        }
+
+        .food-timer {
+            font-size: 18px;
+            color: #ffeb3b;
+            transition: color 0.3s ease;
+        }
+
+        .shake {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        .timer-warning {
+            color: #ff4444;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translateX(-1px); }
+            20%, 80% { transform: translateX(2px); }
+            30%, 50%, 70% { transform: translateX(-4px); }
+            40%, 60% { transform: translateX(4px); }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="scoreboard">
+            <div class="profile left" id="profileLeft">Waiting for Player 1</div>
+            <div class="profile right" id="profileRight">Waiting for Player 2</div>
+        </div>
+        <div class="timers">
+            <div id="mainTimer" class="main-timer">Time: 60</div>
+            <div id="foodTimer" class="food-timer">Food: 10</div>
+        </div>
+        <canvas id="gameCanvas" width="640" height="480"></canvas>
+        <div class="waiting-message" id="waitingMessage">
+            Waiting for another player to join...
+        </div>
+        <div class="controls-info">
+            Use arrow keys to control your snake
+        </div>
+        <div class="game-over" id="gameOver">
+            <h2 id="winnerText">Game Over!</h2>
+            <div id="finalScores"></div>
+            <button class="restart-btn" onclick="restartGame()">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let gameState = {};
+        let playerId;
+        let lastDirection = null;
+        let gameActive = false;
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const waitingMessage = document.getElementById('waitingMessage');
+        const mainTimer = document.getElementById('mainTimer');
+        const foodTimer = document.getElementById('foodTimer');
+        const canvasWidth = canvas.width;
+        const canvasHeight = canvas.height;
+        const gridSize = 16;
+
+        // Socket event handlers
+        socket.on('initialize', (data) => {
+            console.log('Received initialization data:', data);
+            playerId = data.playerId;
+            gameState = data.gameState;
+            
+            if (gameState.players[playerId]) {
+                lastDirection = gameState.players[playerId].direction;
+            }
+
+            updateScoreboard();
+            drawGame();
+            updateTimers(gameState.gameTimer, gameState.foodTimer);
+            waitingMessage.style.display = Object.keys(gameState.players).length < 2 ? 'block' : 'none';
+        });
+
+        socket.on('gameStarted', () => {
+            console.log('Game started');
+            gameActive = true;
+            waitingMessage.style.display = 'none';
+        });
+
+        socket.on('update', (updatedGameState) => {
+            gameState = updatedGameState;
+            updateScoreboard();
+            drawGame();
+            updateTimers(gameState.gameTimer, gameState.foodTimer);
+        });
+
+        socket.on('playerJoined', (data) => {
+            console.log('Player joined:', data);
+            gameState.players[data.playerId] = data.player;
+            updateScoreboard();
+            waitingMessage.style.display = Object.keys(gameState.players).length < 2 ? 'block' : 'none';
+        });
+
+        socket.on('playerLeft', (data) => {
+            console.log('Player left:', data);
+            delete gameState.players[data.playerId];
+            gameActive = false;
+            updateScoreboard();
+            waitingMessage.style.display = 'block';
+        });
+
+        socket.on('gameOver', (data) => {
+            gameActive = false;
+            const gameOverDiv = document.getElementById('gameOver');
+            const winnerText = document.getElementById('winnerText');
+            const finalScores = document.getElementById('finalScores');
+
+            if (data.isTie) {
+                winnerText.textContent = "Game Over! It's a tie!";
+            } else {
+                winnerText.textContent = `Game Over! ${data.winnerId === playerId ? 'You Win!' : 'Opponent Wins!'}`;
+            }
+
+            const scores = Object.entries(data.finalScores)
+                .map(([id, score]) => `${id === playerId ? 'You' : 'Opponent'}: ${score}`)
+                .join('<br>');
+            finalScores.innerHTML = scores;
+
+            gameOverDiv.style.display = 'block';
+        });
+
+        function updateTimers(gameTime, foodTime) {
+            // Update main timer
+            mainTimer.textContent = `Time: ${gameTime}`;
+            if (gameTime <= 10) {
+                mainTimer.classList.add('timer-warning');
+                if (!mainTimer.classList.contains('shake')) {
+                    mainTimer.classList.add('shake');
+                    setTimeout(() => mainTimer.classList.remove('shake'), 500);
+                }
+            } else {
+                mainTimer.classList.remove('timer-warning');
+                mainTimer.classList.remove('shake');
+            }
+
+            // Update food timer
+            foodTimer.textContent = `Food: ${foodTime}`;
+            if (foodTime <= 5) {
+                foodTimer.classList.add('timer-warning');
+                if (!foodTimer.classList.contains('shake')) {
+                    foodTimer.classList.add('shake');
+                    setTimeout(() => foodTimer.classList.remove('shake'), 500);
+                }
+            } else {
+                foodTimer.classList.remove('timer-warning');
+                foodTimer.classList.remove('shake');
+            }
+        }
+
+        function drawGame() {
+            if (!gameState || !gameState.players) return;
+
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+            // Draw grid background
+            ctx.fillStyle = '#2d2d2d';
+            ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+            drawGrid();
+
+            // Draw food
+            if (gameState.food) {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = 'rgba(255, 255, 0, 0.5)';
+                ctx.fillStyle = '#ffeb3b';
+                ctx.beginPath();
+                ctx.arc(
+                    gameState.food.x * gridSize + gridSize / 2,
+                    gameState.food.y * gridSize + gridSize / 2,
+                    gridSize / 2,
+                    0,
+                    2 * Math.PI
+                );
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+
+            // Draw snakes
+            Object.entries(gameState.players).forEach(([id, player]) => {
+                if (!player || !player.snake) return;
+                
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = player.color;
+                ctx.fillStyle = player.color;
+                
+                player.snake.forEach((segment, index) => {
+                    const size = index === 0 ? gridSize : gridSize - 2;
+                    const offset = index === 0 ? 0 : 1;
+                    
+                    ctx.fillRect(
+                        segment.x * gridSize + offset,
+                        segment.y * gridSize + offset,
+                        size,
+                        size
+                    );
+                });
+            });
+            ctx.shadowBlur = 0;
+        }
+
+        function drawGrid() {
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 0.5;
+
+            for (let x = 0; x <= canvasWidth; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvasHeight);
+                ctx.stroke();
+            }
+
+            for (let y = 0; y <= canvasHeight; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvasWidth, y);
+                ctx.stroke();
+            }
+        }
+
+        function updateScoreboard() {
+            if (!gameState || !gameState.players) return;
+            
+            const profileLeft = document.getElementById('profileLeft');
+            const profileRight = document.getElementById('profileRight');
+            
+            const players = Object.entries(gameState.players);
+            
+            if (players[0]) {
+                const [id, player] = players[0];
+                profileLeft.innerHTML = `Player 1: ${player.score}`;
+                profileLeft.style.color = player.color;
+            } else {
+                profileLeft.innerHTML = 'Waiting for Player 1';
+            }
+            
+            if (players[1]) {
+                const [id, player] = players[1];
+                profileRight.innerHTML = `Player 2: ${player.score}`;
+                profileRight.style.color = player.color;
+            } else {
+                profileRight.innerHTML = 'Waiting for Player 2';
+            }
+        }
+
+        // Game controls
+        document.addEventListener('keydown', (event) => {
+            if (!gameActive) return;
+
+            const keyMap = {
+                ArrowLeft: 'LEFT',
+                ArrowRight: 'RIGHT',
+                ArrowUp: 'UP',
+                ArrowDown: 'DOWN'
+            };
+
+            if (keyMap[event.key]) {
+                const newDirection = keyMap[event.key];
+                
+                // Prevent 180-degree turns
+                const opposites = {
+                    'LEFT': 'RIGHT',
+                    'RIGHT': 'LEFT',
+                    'UP': 'DOWN',
+                    'DOWN': 'UP'
+                };
+                
+                if (lastDirection && opposites[lastDirection] === newDirection) {
+                    return;
+                }
+
+                lastDirection = newDirection;
+                socket.emit('move', { direction: newDirection });
+            }
+        });
+
+        function restartGame() {
+            document.getElementById('gameOver').style.display = 'none';
+            gameActive = true;
+            lastDirection = null;
+            socket.emit('restart');
+        }
+
+        socket.on('gameFull', () => {
+            alert('Game is full! Please try again later.');
+        });
+    </script>
+</body>
+</html>
