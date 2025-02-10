@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Pong</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.55.2/phaser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+            color: #fff;
+        }
+        
+        #game-container {
+            position: relative;
+            border-radius: 10px;
+            box-shadow: 0 0 50px rgba(0, 0, 255, 0.3);
+            overflow: hidden;
+        }
+        
+        #status {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px 30px;
+            border-radius: 30px;
+            font-size: 20px;
+            z-index: 1000;
+            letter-spacing: 1px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+        }
+        
+        #game {
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="status">Connecting...</div>
+        <div id="game"></div>
+    </div>
+    <script src="pongScene.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>
