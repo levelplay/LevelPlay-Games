@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Glow X and O Game with Timer</title>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #ffffff;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            cursor: pointer;
+            flex-direction: column;
+        }
+
+        #gameContainer {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 20px;
+        }
+
+        canvas {
+            border: 2px solid #ffffff;
+            display: block;
+            box-shadow: 0 0 20px #ffffff;
+        }
+
+        .info {
+            color: #ffffff;
+            font-size: 18px;
+            text-align: center;
+            margin: 10px 0;
+        }
+
+        .winner-message {
+            font-size: 24px;
+            color: #f39c12;
+            text-shadow: 0 0 10px #f39c12, 0 0 20px #e67e22;
+            margin: 20px;
+        }
+
+        .profile-container {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            padding: 0 20px;
+        }
+
+        #turnInfo {
+            font-size: 20px;
+            font-weight: bold;
+            margin: 10px;
+        }
+
+        #timer {
+            font-size: 30px;
+            font-weight: bold;
+            margin: 10px;
+            text-shadow: 0 0 10px #ff4d4d;
+            transition: transform 0.2s ease-in-out;
+        }
+
+        .shake {
+            animation: shake 0.5s ease-out;
+        }
+
+        @keyframes shake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            50% { transform: translateX(5px); }
+            75% { transform: translateX(-5px); }
+            100% { transform: translateX(0); }
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div class="profile-container">
+            <div id="playerXScore" class="info">Player X: 0</div>
+            <div id="turnInfo">Player X's Turn</div>
+            <div id="playerOScore" class="info">Player O: 0</div>
+        </div>
+        <canvas id="gameCanvas" width="400" height="400"></canvas>
+        <div id="timer">20</div>
+        <div id="winnerMessage" class="winner-message" style="display: none;">Winner: Player X</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const boardSize = 3; // 3x3 grid
+        const cellSize = canvas.width / boardSize;
+        let board = Array(boardSize).fill(null).map(() => Array(boardSize).fill(null));
+        let currentPlayer = 'X';
+        let gameOver = false;
+        let winnerCombination = [];
+        let timerValue = 20;  // Set timer to 20 seconds
+        let timerInterval;
+
+        const players = [
+            { name: "Player X", score: 0, symbol: 'X', color: "#ff4d4d" },
+            { name: "Player O", score: 0, symbol: 'O', color: "#4d94ff" }
+        ];
+
+        function drawBoard() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw glowing grid lines (thicker)
+            ctx.strokeStyle = '#00ffcc';
+            ctx.lineWidth = 6; // Thicker lines
+            ctx.shadowColor = '#00ffcc';
+            ctx.shadowBlur = 15;
+
+            for (let i = 1; i < boardSize; i++) {
+                // Vertical lines
+                ctx.beginPath();
+                ctx.moveTo(i * cellSize, 0);
+                ctx.lineTo(i * cellSize, canvas.height);
+                ctx.stroke();
+
+                // Horizontal lines
+                ctx.beginPath();
+                ctx.moveTo(0, i * cellSize);
+                ctx.lineTo(canvas.width, i * cellSize);
+                ctx.stroke();
+            }
+
+            // Reset shadow
+            ctx.shadowBlur = 0;
+        }
+
+        function drawXO() {
+            for (let row = 0; row < boardSize; row++) {
+                for (let col = 0; col < boardSize; col++) {
+                    const value = board[row][col];
+                    if (value) {
+                        const centerX = col * cellSize + cellSize / 2;
+                        const centerY = row * cellSize + cellSize / 2;
+
+                        if (value === 'X') {
+                            drawX(centerX, centerY);
+                        } else if (value === 'O') {
+                            drawO(centerX, centerY);
+                        }
+                    }
+                }
+            }
+        }
+
+        function drawX(centerX, centerY) {
+            const size = cellSize * 0.4;
+
+            ctx.strokeStyle = players[0].color;
+            ctx.lineWidth = 8;
+            ctx.shadowColor = players[0].color;
+            ctx.shadowBlur = 20;
+
+            ctx.beginPath();
+            ctx.moveTo(centerX - size, centerY - size);
+            ctx.lineTo(centerX + size, centerY + size);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(centerX + size, centerY - size);
+            ctx.lineTo(centerX - size, centerY + size);
+            ctx.stroke();
+
+            ctx.shadowBlur = 0; // Reset shadow
+        }
+
+        function drawO(centerX, centerY) {
+            const radius = cellSize * 0.4;
+
+            ctx.strokeStyle = players[1].color;
+            ctx.lineWidth = 8;
+            ctx.shadowColor = players[1].color;
+            ctx.shadowBlur = 20;
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.shadowBlur = 0; // Reset shadow
+        }
+
+        function checkWinner() {
+            // Check rows, columns, and diagonals
+            for (let i = 0; i < boardSize; i++) {
+                // Check rows
+                if (board[i][0] && board[i].every(cell => cell === board[i][0])) {
+                    winnerCombination = [[i, 0], [i, 1], [i, 2]];
+                    return board[i][0];
+                }
+
+                // Check columns
+                if (board[0][i] && board.every(row => row[i] === board[0][i])) {
+                    winnerCombination = [[0, i], [1, i], [2, i]];
+                    return board[0][i];
+                }
+            }
+
+            // Check diagonals
+            if (board[0][0] && board.every((_, i) => board[i][i] === board[0][0])) {
+                winnerCombination = [[0, 0], [1, 1], [2, 2]];
+                return board[0][0];
+            }
+
+            if (board[0][boardSize - 1] && board.every((_, i) => board[i][boardSize - 1 - i] === board[0][boardSize - 1])) {
+                winnerCombination = [[0, 2], [1, 1], [2, 0]];
+                return board[0][boardSize - 1];
+            }
+
+            // Check for draw
+            if (board.flat().every(cell => cell !== null)) {
+                return 'Draw';
+            }
+
+            return null;
+        }
+
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                timerValue--;
+                document.getElementById('timer').textContent = timerValue;
+
+                if (timerValue <= 5) {
+                    document.getElementById('timer').style.color = 'red';
+                    if (timerValue === 5) {
+                        document.getElementById('timer').classList.add('shake');
+                    }
+                }
+
+                if (timerValue <= 0) {
+                    clearInterval(timerInterval);
+                    endGame('Draw');
+                }
+            }, 1000);
+        }
+
+        function resetTimer() {
+            clearInterval(timerInterval);
+            timerValue = 20; // Reset timer to 20 seconds
+            document.getElementById('timer').textContent = timerValue;
+            document.getElementById('timer').style.color = '#ffffff';
+        }
+
+        function endGame(result) {
+            gameOver = true;
+            clearInterval(timerInterval); // Stop the timer when the game ends
+
+            const winnerMessage = document.getElementById('winnerMessage');
+            if (result === 'Draw') {
+                winnerMessage.textContent = "It's a Draw! Click to restart.";
+            } else {
+                winnerMessage.textContent = `Winner: ${result === 'X' ? 'Player X' : 'Player O'}! Click to restart.`;
+                updateScore(result);
+            }
+            winnerMessage.style.display = 'block';
+            drawStrike(result);
+
+            canvas.addEventListener('click', resetGame, { once: true });
+        }
+
+        function updateScore(winner) {
+            if (winner === 'X') {
+                players[0].score++;
+                document.getElementById('playerXScore').textContent = `Player X: ${players[0].score}`;
+            } else if (winner === 'O') {
+                players[1].score++;
+                document.getElementById('playerOScore').textContent = `Player O: ${players[1].score}`;
+            }
+        }
+
+        function displayWinner(winner) {
+            endGame(winner);
+        }
+
+        function drawStrike(winner) {
+            const strike = winnerCombination.map(([row, col]) => {
+                return {
+                    x: col * cellSize + cellSize / 2,
+                    y: row * cellSize + cellSize / 2
+                };
+            });
+
+            ctx.beginPath();
+            ctx.moveTo(strike[0].x, strike[0].y);
+            ctx.lineTo(strike[2].x, strike[2].y);
+            ctx.stroke();
+        }
+
+        function resetGame() {
+            board = Array(boardSize).fill(null).map(() => Array(boardSize).fill(null));
+            currentPlayer = 'X';
+            gameOver = false;
+            winnerCombination = [];
+            resetTimer();
+            document.getElementById('turnInfo').textContent = "Player X's Turn";
+            document.getElementById('winnerMessage').style.display = 'none';
+
+            drawBoard();
+            drawXO();
+            startTimer();
+        }
+
+        canvas.addEventListener('click', (event) => {
+            if (gameOver) return; // Prevent clicks when the game is over
+
+            const mouseX = event.offsetX;
+            const mouseY = event.offsetY;
+
+            const col = Math.floor(mouseX / cellSize);
+            const row = Math.floor(mouseY / cellSize);
+
+            if (!board[row][col]) {
+                board[row][col] = currentPlayer;
+                drawBoard();
+                drawXO();
+
+                const winner = checkWinner();
+                if (winner) {
+                    if (winner === 'Draw') {
+                        endGame('Draw');
+                    } else {
+                        displayWinner(winner);
+                    }
+                } else {
+                    currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+                    document.getElementById('turnInfo').textContent = `Player ${currentPlayer}'s Turn`;
+                }
+            }
+        });
+
+        resetGame();
+    </script>
+</body>
+</html>
