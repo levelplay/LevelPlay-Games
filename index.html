@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Glow X and O Game with Timer</title>
+    <title>Glow X and O - Real-Time Multiplayer</title>
     <style>
         body {
             background-color: #1a1a1a;
@@ -75,38 +75,669 @@
             75% { transform: translateX(-5px); }
             100% { transform: translateX(0); }
         }
+
+        #joinRoom {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        input {
+            background-color: #333;
+            color: white;
+            border: 1px solid #00ffcc;
+            padding: 10px;
+            border-radius: 5px;
+            width: 200px;
+            font-size: 16px;
+        }
+
+        button {
+            background-color: #00ffcc;
+            color: #1a1a1a;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #00e6b8;
+            box-shadow: 0 0 15px #00ffcc;
+        }
+
+        #roomCodeDisplay {
+            color: #00ffcc;
+            font-size: 24px;
+            margin: 20px 0;
+            padding: 15px;
+            border: 2px solid #00ffcc;
+            border-radius: 5px;
+            background-color: rgba(0, 0, 0, 0.5);
+            text-align: center;
+            box-shadow: 0 0 15px #00ffcc;
+        }
+
+        #gameBoard {
+            display: none;
+        }
+
+        #playerInfo {
+            color: #00ffcc;
+            font-size: 18px;
+            margin: 10px 0;
+            text-align: center;
+        }
+
+        #waitingMessage {
+            font-size: 24px;
+            color: #00ffcc;
+            text-align: center;
+            margin: 20px;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+
+        #startScreen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #title {
+            font-size: 48px;
+            color: #00ffcc;
+            text-shadow: 0 0 20px #00ffcc;
+            margin-bottom: 40px;
+            font-weight: bold;
+        }
+
+        .button-container {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        #shareText {
+            color: #ffffff;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        
+        #connectionStatus {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            color: #fff;
+            padding: 5px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        
+        #serverUrl {
+            margin-top: 10px;
+            display: none; /* Hide the server URL input by default */
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        #serverInput {
+            margin-bottom: 10px;
+            width: 300px;
+        }
+        
+        /* Game end dialog styles */
+        .dialog-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease;
+        }
+        
+        .dialog-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .dialog-box {
+            background-color: #222;
+            border: 2px solid #00ffcc;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 0 30px #00ffcc;
+            text-align: center;
+            width: 350px;
+            max-width: 90%;
+        }
+        
+        .dialog-title {
+            font-size: 28px;
+            color: #00ffcc;
+            margin-bottom: 20px;
+            text-shadow: 0 0 10px #00ffcc;
+        }
+        
+        .dialog-message {
+            font-size: 18px;
+            margin-bottom: 25px;
+            color: #fff;
+        }
+        
+        .dialog-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+        
+        .dialog-box button {
+            min-width: 120px;
+            font-size: 16px;
+        }
+        
+        .decline-btn {
+            background-color: #ff4d4d;
+        }
+        
+        .decline-btn:hover {
+            background-color: #ff3333;
+            box-shadow: 0 0 15px #ff4d4d;
+        }
     </style>
 </head>
 <body>
-    <div id="gameContainer">
-        <div class="profile-container">
-            <div id="playerXScore" class="info">Player X: 0</div>
-            <div id="turnInfo">Player X's Turn</div>
-            <div id="playerOScore" class="info">Player O: 0</div>
+    <div id="startScreen">
+        <div id="title">Glow X and O</div>
+        
+        <div id="serverUrl">
+            <input type="text" id="serverInput" value="http://localhost:3000" placeholder="Socket.io server URL">
+            <button id="connectBtn">Connect to Server</button>
         </div>
-        <canvas id="gameCanvas" width="400" height="400"></canvas>
-        <div id="timer">20</div>
-        <div id="winnerMessage" class="winner-message" style="display: none;">Winner: Player X</div>
+        
+        <div class="button-container" style="display: none;">
+            <button id="createRoomBtn">Create Game</button>
+            <button id="joinRoomBtnToggle">Join Game</button>
+        </div>
+        <div id="joinRoom" style="display: none;">
+            <input type="text" id="roomCodeInput" placeholder="Enter room code">
+            <button id="joinRoomBtn">Join</button>
+        </div>
+        <div id="roomCodeDisplay" style="display: none;"></div>
+        <div id="shareText" style="display: none;">Share this code with your opponent</div>
+        <div id="waitingMessage" style="display: none;">Waiting for opponent...</div>
     </div>
+    
+    <div id="gameBoard">
+        <div id="playerInfo"></div>
+        <div id="gameContainer">
+            <div class="profile-container">
+                <div id="playerXScore" class="info">Player X: 0</div>
+                <div id="turnInfo">Player X's Turn</div>
+                <div id="playerOScore" class="info">Player O: 0</div>
+            </div>
+            <canvas id="gameCanvas" width="400" height="400"></canvas>
+            <div id="timer">25</div>
+            <div id="winnerMessage" class="winner-message" style="display: none;">Winner: Player X</div>
+        </div>
+    </div>
+    
+    <!-- Game End Dialog -->
+    <div id="gameEndDialog" class="dialog-overlay">
+        <div class="dialog-box">
+            <div class="dialog-title">Game Over</div>
+            <div id="gameEndMessage" class="dialog-message">Player X wins!</div>
+            <div class="dialog-buttons">
+                <button id="rematchBtn" class="rematch-btn">Rematch</button>
+                <button id="quitBtn" class="decline-btn">Quit</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Rematch Request Dialog -->
+    <div id="rematchRequestDialog" class="dialog-overlay">
+        <div class="dialog-box">
+            <div class="dialog-title">Rematch Request</div>
+            <div class="dialog-message">Your opponent wants a rematch.</div>
+            <div class="dialog-buttons">
+                <button id="acceptRematchBtn">Accept</button>
+                <button id="declineRematchBtn" class="decline-btn">Decline</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="connectionStatus">Not connected</div>
+
+    <!-- Include Socket.io client -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
 
     <script>
+        // DOM Elements
+        const startScreen = document.getElementById('startScreen');
+        const gameBoard = document.getElementById('gameBoard');
+        const createRoomBtn = document.getElementById('createRoomBtn');
+        const joinRoomBtnToggle = document.getElementById('joinRoomBtnToggle');
+        const joinRoomForm = document.getElementById('joinRoom');
+        const joinRoomBtn = document.getElementById('joinRoomBtn');
+        const roomCodeInput = document.getElementById('roomCodeInput');
+        const roomCodeDisplay = document.getElementById('roomCodeDisplay');
+        const shareText = document.getElementById('shareText');
+        const waitingMessage = document.getElementById('waitingMessage');
+        const playerInfo = document.getElementById('playerInfo');
+        const buttonContainer = document.querySelector('.button-container');
+        const connectBtn = document.getElementById('connectBtn');
+        const serverInput = document.getElementById('serverInput');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const winnerMessage = document.getElementById('winnerMessage');
+        
+        // Dialog elements
+        const gameEndDialog = document.getElementById('gameEndDialog');
+        const gameEndMessage = document.getElementById('gameEndMessage');
+        const rematchBtn = document.getElementById('rematchBtn');
+        const quitBtn = document.getElementById('quitBtn');
+        const rematchRequestDialog = document.getElementById('rematchRequestDialog');
+        const acceptRematchBtn = document.getElementById('acceptRematchBtn');
+        const declineRematchBtn = document.getElementById('declineRematchBtn');
+        
+        // Game variables
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-
-        const boardSize = 3; // 3x3 grid
+        const boardSize = 3;
         const cellSize = canvas.width / boardSize;
+        
         let board = Array(boardSize).fill(null).map(() => Array(boardSize).fill(null));
         let currentPlayer = 'X';
         let gameOver = false;
         let winnerCombination = [];
-        let timerValue = 20;  // Set timer to 20 seconds
+        let timerValue = 25;
         let timerInterval;
-
+        let playerRole = null; // 'X' or 'O'
+        let roomCode = null;
+        let gameActive = false;
+        let socket = null;
+        let gameResult = null; // Store the result of the game
+        
         const players = [
             { name: "Player X", score: 0, symbol: 'X', color: "#ff4d4d" },
             { name: "Player O", score: 0, symbol: 'O', color: "#4d94ff" }
         ];
 
+        // Set default server URL
+        const DEFAULT_SERVER_URL = "http://localhost:3000";
+
+        // Auto-connect to default server on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            connectionStatus.textContent = 'Connecting...';
+            connectionStatus.style.color = '#ffcc00';
+            connectToServer(DEFAULT_SERVER_URL);
+        });
+
+        // Function to connect to a server
+        function connectToServer(serverUrl) {
+            try {
+                // Disconnect existing socket if any
+                if (socket) {
+                    socket.disconnect();
+                }
+                
+                // Connect to the server
+                socket = io(serverUrl);
+                
+                // Socket event handlers
+                socket.on('connect', () => {
+                    console.log('Connected to server:', socket.id);
+                    connectionStatus.textContent = 'Connected: ' + socket.id;
+                    connectionStatus.style.color = '#00ff00';
+                    
+                    // Show game buttons after successful connection
+                    buttonContainer.style.display = 'flex';
+                    
+                    // Set up socket event handlers
+                    setupSocketEventHandlers();
+                });
+                
+                socket.on('connect_error', (err) => {
+                    console.error('Connection error:', err);
+                    connectionStatus.textContent = 'Connection error: ' + err.message;
+                    connectionStatus.style.color = '#ff0000';
+                });
+                
+                socket.on('disconnect', (reason) => {
+                    console.log('Disconnected:', reason);
+                    connectionStatus.textContent = 'Disconnected: ' + reason;
+                    connectionStatus.style.color = '#ff0000';
+                    
+                    buttonContainer.style.display = 'none';
+                });
+            } catch (error) {
+                console.error('Error initializing Socket.io:', error);
+                connectionStatus.textContent = 'Error: ' + error.message;
+                connectionStatus.style.color = '#ff0000';
+            }
+        }
+
+        // Legacy connect button event listener (can be removed if not needed)
+        connectBtn.addEventListener('click', () => {
+            const serverUrl = serverInput.value.trim();
+            
+            if (!serverUrl) {
+                alert('Please enter a valid server URL');
+                return;
+            }
+            
+            connectToServer(serverUrl);
+        });
+
+        // UI Event Listeners
+        joinRoomBtnToggle.addEventListener('click', () => {
+            joinRoomForm.style.display = joinRoomForm.style.display === 'none' ? 'flex' : 'none';
+        });
+
+        createRoomBtn.addEventListener('click', () => {
+            if (!socket || !socket.connected) {
+                alert('Not connected to server. Please connect first.');
+                return;
+            }
+            
+            createRoomBtn.disabled = true;
+            joinRoomBtnToggle.disabled = true;
+            
+            socket.emit('createRoom');
+            console.log('Sent createRoom event to server');
+        });
+
+        joinRoomBtn.addEventListener('click', () => {
+            if (!socket || !socket.connected) {
+                alert('Not connected to server. Please connect first.');
+                return;
+            }
+            
+            const code = roomCodeInput.value.trim().toUpperCase();
+            if (code) {
+                joinRoomBtn.disabled = true;
+                roomCodeInput.disabled = true;
+                
+                socket.emit('joinRoom', { roomCode: code });
+                console.log('Sent joinRoom event to server with code:', code);
+            } else {
+                alert('Please enter a room code');
+            }
+        });
+        
+        // Game end dialog buttons
+        rematchBtn.addEventListener('click', () => {
+            if (roomCode && socket && socket.connected) {
+                socket.emit('requestRematch', { roomCode });
+                console.log('Requested rematch');
+                closeGameEndDialog();
+                // Show waiting message
+                winnerMessage.textContent = "Waiting for opponent to accept rematch...";
+                winnerMessage.style.display = 'block';
+            }
+        });
+        
+        quitBtn.addEventListener('click', () => {
+            if (roomCode && socket && socket.connected) {
+                socket.emit('quitGame', { roomCode });
+                console.log('Quit game');
+            }
+            closeGameEndDialog();
+            resetToLobby();
+        });
+        
+        // Rematch request dialog buttons
+        acceptRematchBtn.addEventListener('click', () => {
+            if (roomCode && socket && socket.connected) {
+                socket.emit('acceptRematch', { roomCode });
+                console.log('Accepted rematch');
+            }
+            closeRematchRequestDialog();
+        });
+        
+        declineRematchBtn.addEventListener('click', () => {
+            if (roomCode && socket && socket.connected) {
+                socket.emit('declineRematch', { roomCode });
+                console.log('Declined rematch');
+            }
+            closeRematchRequestDialog();
+            resetToLobby();
+        });
+
+        function setupSocketEventHandlers() {
+            socket.on('roomCreated', (data) => {
+                console.log('Room created:', data);
+                roomCode = data.roomCode;
+                playerRole = 'X';
+                
+                roomCodeDisplay.textContent = `Room Code: ${roomCode}`;
+                roomCodeDisplay.style.display = 'block';
+                shareText.style.display = 'block';
+                waitingMessage.style.display = 'block';
+                
+                joinRoomForm.style.display = 'none';
+            });
+
+            socket.on('playerJoined', () => {
+                console.log('Player joined, starting game');
+                // Someone joined the room, start the game
+                startScreen.style.display = 'none';
+                gameBoard.style.display = 'block';
+                
+                playerInfo.textContent = `You are Player ${playerRole}`;
+                gameActive = true;
+                
+                resetGame();
+            });
+
+            socket.on('joinedRoom', (data) => {
+                console.log('Joined room:', data);
+                roomCode = data.roomCode;
+                playerRole = 'O';
+                
+                startScreen.style.display = 'none';
+                gameBoard.style.display = 'block';
+                
+                playerInfo.textContent = `You are Player ${playerRole}`;
+                
+                // Update board state
+                board = data.boardState;
+                currentPlayer = data.currentPlayer;
+                players[0].score = data.scores.X;
+                players[1].score = data.scores.O;
+                gameActive = true;
+                
+                document.getElementById('playerXScore').textContent = `Player X: ${data.scores.X}`;
+                document.getElementById('playerOScore').textContent = `Player O: ${data.scores.O}`;
+                document.getElementById('turnInfo').textContent = `Player ${currentPlayer}'s Turn`;
+                
+                drawBoard();
+                drawXO();
+                resetTimer();
+            });
+
+            socket.on('updateBoard', (data) => {
+                console.log('Board updated:', data);
+                board = data.boardState;
+                currentPlayer = data.currentPlayer;
+                document.getElementById('turnInfo').textContent = `Player ${currentPlayer}'s Turn`;
+                
+                drawBoard();
+                drawXO();
+                resetTimer();
+            });
+
+            socket.on('gameOver', (data) => {
+                console.log('Game over:', data);
+                board = data.boardState;
+                drawBoard();
+                drawXO();
+                
+                gameOver = true;
+                gameResult = data.result;
+                clearInterval(timerInterval);
+                
+                // Store the game result message
+                let resultMessage;
+                if (data.result === 'Draw') {
+                    resultMessage = "It's a Draw!";
+                } else if (data.result === 'Timeout') {
+                    resultMessage = "No Winner - Time Expired";
+                } else {
+                    resultMessage = `Player ${data.result} wins!`;
+                    
+                    // Update scores
+                    players[0].score = data.scores.X;
+                    players[1].score = data.scores.O;
+                    document.getElementById('playerXScore').textContent = `Player X: ${data.scores.X}`;
+                    document.getElementById('playerOScore').textContent = `Player O: ${data.scores.O}`;
+                }
+                
+                // Update the winner message (will be visible behind the dialog)
+                winnerMessage.textContent = resultMessage;
+                winnerMessage.style.display = 'block';
+                
+                // Draw winning line
+                if (data.result !== 'Draw' && data.result !== 'Timeout') {
+                    winnerCombination = data.winnerCombination;
+                    drawStrike(data.result);
+                }
+                
+                // Show the game end dialog after a short delay
+                setTimeout(() => {
+                    showGameEndDialog(resultMessage);
+                }, 1500);
+            });
+
+            socket.on('gameRestarted', (data) => {
+                console.log('Game restarted:', data);
+                board = data.boardState;
+                currentPlayer = data.currentPlayer;
+                gameOver = false;
+                gameActive = true;
+                
+                winnerMessage.style.display = 'none';
+                
+                document.getElementById('turnInfo').textContent = `Player X's Turn`;
+                
+                resetTimer();
+                drawBoard();
+                drawXO();
+            });
+            
+            socket.on('rematchRequested', () => {
+                console.log('Rematch requested by opponent');
+                showRematchRequestDialog();
+            });
+            
+            socket.on('rematchAccepted', () => {
+                console.log('Rematch accepted by opponent');
+                winnerMessage.style.display = 'none';
+            });
+            
+            socket.on('rematchDeclined', () => {
+                console.log('Rematch declined by opponent');
+                alert('Your opponent declined the rematch.');
+                resetToLobby();
+            });
+            
+            socket.on('opponentQuit', () => {
+                console.log('Opponent quit');
+                alert('Your opponent has left the game. Returning to lobby.');
+                resetToLobby();
+            });
+
+            socket.on('roomError', (data) => {
+                console.error('Room error:', data);
+                alert(data.message);
+                
+                joinRoomBtn.disabled = false;
+                roomCodeInput.disabled = false;
+                createRoomBtn.disabled = false;
+                joinRoomBtnToggle.disabled = false;
+            });
+        }
+
+        // Game events
+        canvas.addEventListener('click', (event) => {
+            if (gameOver || currentPlayer !== playerRole || !gameActive || !socket || !socket.connected) return;
+            
+            const mouseX = event.offsetX;
+            const mouseY = event.offsetY;
+            
+            const col = Math.floor(mouseX / cellSize);
+            const row = Math.floor(mouseY / cellSize);
+            
+            if (row >= 0 && row < boardSize && col >= 0 && col < boardSize && !board[row][col]) {
+                console.log('Making move:', { row, col, player: playerRole });
+                socket.emit('makeMove', { 
+                    roomCode, 
+                    player: playerRole, 
+                    row, 
+                    col 
+                });
+            }
+        });
+
+        // Dialog functions
+        function showGameEndDialog(message) {
+            gameEndMessage.textContent = message;
+            gameEndDialog.classList.add('active');
+        }
+        
+        function closeGameEndDialog() {
+            gameEndDialog.classList.remove('active');
+        }
+        
+        function showRematchRequestDialog() {
+            rematchRequestDialog.classList.add('active');
+        }
+        
+        function closeRematchRequestDialog() {
+            rematchRequestDialog.classList.remove('active');
+        }
+
+        // Game Functions
+        function resetToLobby() {
+            gameBoard.style.display = 'none';
+            startScreen.style.display = 'flex';
+            
+            createRoomBtn.style.display = 'block';
+            createRoomBtn.disabled = false;
+            joinRoomBtnToggle.style.display = 'block';
+            joinRoomBtnToggle.disabled = false;
+            joinRoomForm.style.display = 'none';
+            waitingMessage.style.display = 'none';
+            roomCodeDisplay.style.display = 'none';
+            shareText.style.display = 'none';
+            
+            roomCodeInput.value = '';
+            roomCodeInput.disabled = false;
+            joinRoomBtn.disabled = false;
+            
+            // Reset game state
+            clearInterval(timerInterval);
+            gameOver = false;
+            gameActive = false;
+            roomCode = null;
+            playerRole = null;
+        }
+        
         function drawBoard() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -188,39 +819,14 @@
             ctx.shadowBlur = 0; // Reset shadow
         }
 
-        function checkWinner() {
-            // Check rows, columns, and diagonals
-            for (let i = 0; i < boardSize; i++) {
-                // Check rows
-                if (board[i][0] && board[i].every(cell => cell === board[i][0])) {
-                    winnerCombination = [[i, 0], [i, 1], [i, 2]];
-                    return board[i][0];
-                }
-
-                // Check columns
-                if (board[0][i] && board.every(row => row[i] === board[0][i])) {
-                    winnerCombination = [[0, i], [1, i], [2, i]];
-                    return board[0][i];
-                }
-            }
-
-            // Check diagonals
-            if (board[0][0] && board.every((_, i) => board[i][i] === board[0][0])) {
-                winnerCombination = [[0, 0], [1, 1], [2, 2]];
-                return board[0][0];
-            }
-
-            if (board[0][boardSize - 1] && board.every((_, i) => board[i][boardSize - 1 - i] === board[0][boardSize - 1])) {
-                winnerCombination = [[0, 2], [1, 1], [2, 0]];
-                return board[0][boardSize - 1];
-            }
-
-            // Check for draw
-            if (board.flat().every(cell => cell !== null)) {
-                return 'Draw';
-            }
-
-            return null;
+        function resetTimer() {
+            clearInterval(timerInterval);
+            timerValue = 25;
+            document.getElementById('timer').textContent = timerValue;
+            document.getElementById('timer').style.color = '#ffffff';
+            document.getElementById('timer').classList.remove('shake');
+            
+            startTimer();
         }
 
         function startTimer() {
@@ -237,50 +843,16 @@
 
                 if (timerValue <= 0) {
                     clearInterval(timerInterval);
-                    endGame('Draw');
+                    if (playerRole === currentPlayer && gameActive && socket && socket.connected) {
+                        socket.emit('timeOut', { roomCode });
+                    }
                 }
             }, 1000);
         }
 
-        function resetTimer() {
-            clearInterval(timerInterval);
-            timerValue = 20; // Reset timer to 20 seconds
-            document.getElementById('timer').textContent = timerValue;
-            document.getElementById('timer').style.color = '#ffffff';
-        }
-
-        function endGame(result) {
-            gameOver = true;
-            clearInterval(timerInterval); // Stop the timer when the game ends
-
-            const winnerMessage = document.getElementById('winnerMessage');
-            if (result === 'Draw') {
-                winnerMessage.textContent = "It's a Draw! Click to restart.";
-            } else {
-                winnerMessage.textContent = `Winner: ${result === 'X' ? 'Player X' : 'Player O'}! Click to restart.`;
-                updateScore(result);
-            }
-            winnerMessage.style.display = 'block';
-            drawStrike(result);
-
-            canvas.addEventListener('click', resetGame, { once: true });
-        }
-
-        function updateScore(winner) {
-            if (winner === 'X') {
-                players[0].score++;
-                document.getElementById('playerXScore').textContent = `Player X: ${players[0].score}`;
-            } else if (winner === 'O') {
-                players[1].score++;
-                document.getElementById('playerOScore').textContent = `Player O: ${players[1].score}`;
-            }
-        }
-
-        function displayWinner(winner) {
-            endGame(winner);
-        }
-
         function drawStrike(winner) {
+            if (!winnerCombination || winnerCombination.length < 3) return;
+            
             const strike = winnerCombination.map(([row, col]) => {
                 return {
                     x: col * cellSize + cellSize / 2,
@@ -289,9 +861,16 @@
             });
 
             ctx.beginPath();
+            ctx.strokeStyle = winner === 'X' ? players[0].color : players[1].color;
+            ctx.lineWidth = 10;
+            ctx.shadowColor = winner === 'X' ? players[0].color : players[1].color;
+            ctx.shadowBlur = 25;
+            
             ctx.moveTo(strike[0].x, strike[0].y);
             ctx.lineTo(strike[2].x, strike[2].y);
             ctx.stroke();
+            
+            ctx.shadowBlur = 0;
         }
 
         function resetGame() {
@@ -299,44 +878,16 @@
             currentPlayer = 'X';
             gameOver = false;
             winnerCombination = [];
+            
+            document.getElementById('turnInfo').textContent = `Player X's Turn`;
+            winnerMessage.style.display = 'none';
+            
             resetTimer();
-            document.getElementById('turnInfo').textContent = "Player X's Turn";
-            document.getElementById('winnerMessage').style.display = 'none';
-
             drawBoard();
-            drawXO();
-            startTimer();
         }
 
-        canvas.addEventListener('click', (event) => {
-            if (gameOver) return; // Prevent clicks when the game is over
-
-            const mouseX = event.offsetX;
-            const mouseY = event.offsetY;
-
-            const col = Math.floor(mouseX / cellSize);
-            const row = Math.floor(mouseY / cellSize);
-
-            if (!board[row][col]) {
-                board[row][col] = currentPlayer;
-                drawBoard();
-                drawXO();
-
-                const winner = checkWinner();
-                if (winner) {
-                    if (winner === 'Draw') {
-                        endGame('Draw');
-                    } else {
-                        displayWinner(winner);
-                    }
-                } else {
-                    currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
-                    document.getElementById('turnInfo').textContent = `Player ${currentPlayer}'s Turn`;
-                }
-            }
-        });
-
-        resetGame();
+        // Initialize
+        drawBoard();
     </script>
 </body>
-</html>
+</html> 
