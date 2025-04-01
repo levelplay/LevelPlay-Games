@@ -22,7 +22,8 @@ let gameState = {
     food: { x: 5, y: 5 },
     isActive: false,
     gameTimer: GAME_DURATION,
-    foodTimer: FOOD_DURATION
+    foodTimer: FOOD_DURATION,
+    rematchRequests: {} // Track rematch requests
 };
 
 let gameLoop = null;
@@ -93,6 +94,7 @@ function startGame() {
     gameState.isActive = true;
     gameState.gameTimer = GAME_DURATION;
     gameState.foodTimer = FOOD_DURATION;
+    gameState.rematchRequests = {}; // Clear any rematch requests
     
     clearInterval(gameLoop);
     clearInterval(gameTimer);
@@ -158,6 +160,45 @@ function endGame(winnerId = null) {
     }
 }
 
+function resetGame() {
+    // Reset game state
+    const playerIds = Object.keys(gameState.players);
+    
+    gameState = {
+        players: {},
+        food: { x: 5, y: 5 },
+        isActive: false,
+        gameTimer: GAME_DURATION,
+        foodTimer: FOOD_DURATION,
+        rematchRequests: {}
+    };
+    
+    // Add players back with initial positions
+    if (playerIds.length > 0) {
+        const isFirstPlayer = true;
+        const startX = 10;
+        
+        gameState.players[playerIds[0]] = {
+            score: 0,
+            color: 'red',
+            snake: [{ x: startX, y: 15 }, { x: startX - 1, y: 15 }],
+            direction: 'RIGHT'
+        };
+        
+        if (playerIds.length > 1) {
+            const startX2 = 30;
+            gameState.players[playerIds[1]] = {
+                score: 0,
+                color: 'blue',
+                snake: [{ x: startX2, y: 15 }, { x: startX2 + 1, y: 15 }],
+                direction: 'LEFT'
+            };
+        }
+    }
+    
+    return gameState;
+}
+
 // Handle Socket.IO connections
 io.on('connection', (socket) => {
     console.log('Player connected:', socket.id);
@@ -204,36 +245,106 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log('Player disconnected:', socket.id);
         delete gameState.players[socket.id];
+        delete gameState.rematchRequests[socket.id];
+        
         gameState.isActive = false;
         clearInterval(gameLoop);
         clearInterval(gameTimer);
         clearInterval(foodTimer);
+        
         io.emit('playerLeft', { playerId: socket.id });
     });
 
+    // Handle rematch request
+    socket.on('requestRematch', () => {
+        console.log('Rematch requested by:', socket.id);
+        
+        // Find the opponent
+        const opponentId = Object.keys(gameState.players).find(id => id !== playerId);
+        if (!opponentId) {
+            // No opponent found
+            socket.emit('rematchFailed', { reason: 'No opponent found' });
+            return;
+        }
+        
+        // Set this player's rematch request
+        gameState.rematchRequests[playerId] = true;
+        
+        // Send request to opponent
+        socket.to(opponentId).emit('rematchRequested', { 
+            requesterId: playerId 
+        });
+        
+        // Notify requester that request was sent
+        socket.emit('rematchRequestSent');
+    });
+    
+    // Handle rematch acceptance
+    socket.on('acceptRematch', () => {
+        console.log('Rematch accepted by:', socket.id);
+        
+        // Find the requester (opponent)
+        const opponentId = Object.keys(gameState.players).find(id => id !== playerId);
+        
+        if (!opponentId || !gameState.rematchRequests[opponentId]) {
+            // Invalid rematch state
+            socket.emit('rematchFailed', { reason: 'Invalid rematch state' });
+            return;
+        }
+        
+        // Both players have agreed to rematch
+        const resetGameState = resetGame();
+        
+        // Clear intervals
+        clearInterval(gameLoop);
+        clearInterval(gameTimer);
+        clearInterval(foodTimer);
+        
+        // Send reset event to both players
+        io.emit('gameRestarted', { gameState: resetGameState });
+        
+        // Start the game again
+        startGame();
+        io.emit('gameStarted');
+    });
+    
+    // Handle rematch decline
+    socket.on('declineRematch', () => {
+        console.log('Rematch declined by:', socket.id);
+        
+        // Find the requester (opponent)
+        const opponentId = Object.keys(gameState.players).find(id => id !== playerId);
+        
+        if (opponentId) {
+            // Notify requester that rematch was declined
+            io.to(opponentId).emit('rematchDeclined');
+        }
+        
+        // Clear rematch requests
+        gameState.rematchRequests = {};
+    });
+
+    // Handle quit game
+    socket.on('quit', () => {
+        clearInterval(gameLoop);
+        clearInterval(gameTimer);
+        clearInterval(foodTimer);
+        
+        gameState.isActive = false;
+        gameState.rematchRequests = {};
+        
+        // Notify all players
+        io.emit('gameQuit');
+    });
+    
+    // Handle restart (legacy - keeping for backward compatibility)
     socket.on('restart', () => {
         const isFirstPlayer = Object.keys(gameState.players).length === 0;
         const startX = isFirstPlayer ? 10 : 30;
         
-        gameState = {
-            players: {},
-            food: { x: 5, y: 5 },
-            isActive: false,
-            gameTimer: GAME_DURATION,
-            foodTimer: FOOD_DURATION
-        };
+        resetGame();
         
-        gameState.players[playerId] = {
-            score: 0,
-            color: isFirstPlayer ? 'red' : 'blue',
-            snake: [{ x: startX, y: 15 }, { x: startX - 1, y: 15 }],
-            direction: isFirstPlayer ? 'RIGHT' : 'LEFT'
-        };
-        
-        clearInterval(gameLoop);
-        clearInterval(gameTimer);
-        clearInterval(foodTimer);
-        io.emit('initialize', { playerId, gameState });
+        socket.emit('initialize', { playerId, gameState });
     });
 });
 
