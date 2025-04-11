@@ -1,31 +1,298 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Competitive Shuffleboard</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
-    <script src="/socket.io/socket.io.js"></script>
-    <style>
-        body {
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            background-color: #f0f0f0;
-            font-family: Arial, sans-serif;
-        }
-        #game-container {
-            transform: perspective(1000px) rotateX(20deg);
-            transform-origin: 50% 100%;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            border-radius: 8px;
-            overflow: hidden;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chess</title>
+  <!-- Load dependencies first -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.4.7/peerjs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background-color: #1a1a1a;
+      color: #f0f0f0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    
+    .container {
+      width: 100%;
+      max-width: 800px;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    
+    h1 {
+      text-align: center;
+      color: #ffd700;
+      margin-bottom: 20px;
+      font-size: 32px;
+      letter-spacing: 2px;
+    }
+    
+    .menu-container {
+      background-color: #2a2a2a;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    
+    input, button {
+      width: 100%;
+      padding: 10px;
+      border-radius: 4px;
+      border: none;
+      box-sizing: border-box;
+    }
+    
+    input {
+      background-color: #3a3a3a;
+      color: #f0f0f0;
+    }
+    
+    button {
+      background-color: #4a752c;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 5px;
+    }
+    
+    button:hover {
+      background-color: #5a853c;
+    }
+    
+    button:active {
+      background-color: #3a651c;
+    }
+    
+    button:disabled {
+      background-color: #555;
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+    
+    .room-info {
+      background-color: #3a3a3a;
+      padding: 10px;
+      border-radius: 4px;
+      text-align: center;
+      margin-bottom: 15px;
+    }
+    
+    .room-code {
+      font-size: 24px;
+      font-weight: bold;
+      color: #ffd700;
+      letter-spacing: 2px;
+      margin: 10px 0;
+    }
+    
+    #copy-btn {
+      background-color: #2c5475;
+      margin-top: 10px;
+    }
+    
+    #copy-btn:hover {
+      background-color: #3c6485;
+    }
+    
+    .status-message {
+      text-align: center;
+      margin: 10px 0;
+      padding: 12px;
+      border-radius: 4px;
+      background-color: #2a2a2a;
+      font-size: 16px;
+      font-weight: bold;
+    }
+    
+    #game-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+    }
+    
+    /* Position the bottom game controls */
+    .game-controls-bottom {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 15px;
+      width: 100%;
+      max-width: 400px; /* Match the chess board width */
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .game-controls-bottom button {
+      width: 48%;
+      padding: 10px;
+      border-radius: 4px;
+      border: none;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #rematch-btn {
+      background-color: #4a752c;
+      color: white;
+    }
+
+    #rematch-btn:hover {
+      background-color: #5a853c;
+    }
+
+    #quit-btn {
+      background-color: #752c2c;
+      color: white;
+    }
+
+    #quit-btn:hover {
+      background-color: #853c3c;
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
+    /* Chess board styles */
+    #chess-board {
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.6);
+      border-radius: 4px;
+      overflow: hidden;
+      touch-action: manipulation; /* Prevents scrolling while dragging on mobile */
+    }
+
+    /* Add style for square highlighting */
+    .highlight {
+      border-radius: 5px;
+      box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
+      animation: pulse 1.5s infinite;
+      pointer-events: none; /* Ensures clicks pass through to the square underneath */
+    }
+
+    /* Style for move indicators */
+    @keyframes pulse {
+      0% { opacity: 0.5; }
+      50% { opacity: 0.7; }
+      100% { opacity: 0.5; }
+    }
+
+    /* Styling for the pieces to make them more visible */
+    #chess-board div {
+      -webkit-user-select: none; /* Safari */
+      -ms-user-select: none; /* IE 10 and IE 11 */
+      user-select: none; /* Standard syntax */
+    }
+
+    /* Improve status message visibility */
+    .status-message {
+      font-weight: bold;
+      transition: background-color 0.3s ease;
+    }
+
+    /* Make status message more prominent when it's the player's turn */
+    .status-message.your-turn {
+      background-color: #4a752c;
+      animation: highlight-turn 2s ease-in-out;
+    }
+
+    @keyframes highlight-turn {
+      0% { background-color: #4a752c; }
+      50% { background-color: #5a853c; }
+      100% { background-color: #4a752c; }
+    }
+
+    /* Responsive adjustments for the board */
+    @media (max-width: 500px) {
+      #chess-board {
+        width: 300px !important;
+        height: 300px !important;
+      }
+      
+      #chess-board > div {
+        font-size: 30px !important;
+      }
+    }
+
+    /* Add some visual feedback during drag operations */
+    #chess-board > div[draggable=true]:active {
+      cursor: grabbing;
+    }
+
+    /* Add class for last move highlight */
+    .last-move {
+      background-color: rgba(255, 215, 0, 0.3) !important;
+    }
+    
+    @media (max-width: 600px) {
+      .container {
+        padding: 10px;
+      }
+      
+      #game-canvas {
+        width: 100%;
+        height: auto;
+      }
+    }
+  </style>
 </head>
 <body>
+  <div class="container">
+    <h1>CHESS</h1>
+    
+    <div id="menu-container" class="menu-container">
+      <div class="form-group">
+        <button id="create-btn">Create New Game</button>
+      </div>
+      
+      <div class="form-group">
+        <label for="room-code">Join Existing Game</label>
+        <input type="text" id="room-code" placeholder="Enter room code" maxlength="10">
+        <button id="join-btn">Join Game</button>
+      </div>
+    </div>
+    
+    <div id="status" class="status-message">Ready to play! Create or join a game.</div>
+    
+    <div id="game-info" class="hidden">
+      <div class="room-info">
+        <div>Room Code:</div>
+        <div id="display-code" class="room-code"></div>
+        <button id="copy-btn">Copy Code</button>
+      </div>
+      
+      <!-- Removed the top game controls -->
+    </div>
+    
     <div id="game-container"></div>
-    <script src="game.js"></script>
+    
+    <div class="game-controls-bottom hidden" id="game-controls-bottom">
+      <button id="rematch-btn">Rematch</button>
+      <button id="quit-btn">Quit</button>
+    </div>
+    
+    <!-- Debug area (hidden by default) -->
+    <div id="debug-area" class="debug-info hidden"></div>
+  </div>
+  
+  <!-- Directly include the game script at the end of the body -->
+  <script src="game.js"></script>
 </body>
 </html>
