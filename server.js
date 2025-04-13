@@ -3,6 +3,7 @@ const express = require('express');
 const app = express();
 const server = require('http').createServer(app);
 const io = require('socket.io')(server);
+const { v4: uuidv4 } = require('uuid'); // Add UUID dependency
 
 app.use(express.static('public'));
 
@@ -120,97 +121,297 @@ class GameState {
     }
 }
 
+// Store active games and players waiting in rooms
 const games = new Map();
-const waitingPlayers = new Set();
+const gameRooms = new Map(); // Map room codes to game IDs
+const playerToRoom = new Map(); // Track which room a player is in
+const rematchRequests = new Map(); // Track rematch requests
 
 io.on('connection', (socket) => {
     console.log('Player connected:', socket.id);
 
-    socket.on('playerReady', () => {
-        console.log('Player ready:', socket.id);
-        if (waitingPlayers.has(socket.id)) return;
+    // Create a new game room with a generated code
+    socket.on('createGame', () => {
+        try {
+            // Generate a UUID and use first 6 characters for room code
+            const roomCode = uuidv4().substring(0, 6).toUpperCase();
+            console.log('Creating new game room with code:', roomCode);
+            
+            // Store the host in the room
+            gameRooms.set(roomCode, {
+                host: socket.id,
+                guest: null,
+                gameId: null
+            });
+            
+            // Join the socket to the room
+            socket.join(roomCode);
+            
+            // Store room code mapping for this player
+            playerToRoom.set(socket.id, roomCode);
+            
+            // Notify the client
+            socket.emit('gameCreated', { roomCode });
+            console.log('Room created:', roomCode, 'by', socket.id);
+        } catch (error) {
+            console.error('Error creating game:', error);
+            socket.emit('error', { message: 'Failed to create game room' });
+        }
+    });
 
-        if (waitingPlayers.size === 0) {
-            waitingPlayers.add(socket.id);
-            socket.emit('status', 'Waiting for opponent...');
-            console.log('Player waiting for opponent:', socket.id);
-        } else {
-            const opponent = waitingPlayers.values().next().value;
-            waitingPlayers.delete(opponent);
+    // Join an existing game using a room code
+    socket.on('joinGame', (data) => {
+        try {
+            if (!data || !data.roomCode) {
+                socket.emit('joinError', { message: 'Invalid room code' });
+                return;
+            }
             
-            console.log('Starting game between', opponent, 'and', socket.id);
+            const roomCode = data.roomCode.toString().toUpperCase();
+            console.log('Player', socket.id, 'attempting to join room:', roomCode);
             
-            // Create new game
-            const gameState = new GameState(opponent, socket.id);
+            // Check if room exists
+            if (!gameRooms.has(roomCode)) {
+                socket.emit('joinError', { message: 'Room not found' });
+                return;
+            }
+            
+            const room = gameRooms.get(roomCode);
+            
+            // Check if room is full
+            if (room.guest !== null) {
+                socket.emit('joinError', { message: 'Room is full' });
+                return;
+            }
+            
+            // Join the room
+            socket.join(roomCode);
+            playerToRoom.set(socket.id, roomCode);
+            room.guest = socket.id;
+            
+            console.log('Player joined room:', roomCode, 'Host:', room.host, 'Guest:', room.guest);
+            
+            // Start the game
             const gameId = Date.now().toString();
+            const gameState = new GameState(room.host, room.guest);
+            
             games.set(gameId, {
                 state: gameState,
+                roomCode: roomCode,
                 interval: setInterval(() => {
                     gameState.update();
                     const state = gameState.getState();
-                    io.to(opponent).to(socket.id).emit('gameState', state);
+                    io.to(roomCode).emit('gameState', state);
                 }, UPDATE_RATE)
             });
-
-            // Store game reference for both players
-            socket.gameId = gameId;
-            const opponentSocket = io.sockets.sockets.get(opponent);
-            if (opponentSocket) {
-                opponentSocket.gameId = gameId;
+            
+            room.gameId = gameId;
+            
+            // Store game reference for host (we'll do guest separately)
+            try {
+                const hostSocket = io.sockets.sockets.get(room.host);
+                if (hostSocket) {
+                    hostSocket.emit('gameStart', { side: 'left' });
+                } else {
+                    // If we can't get the host socket directly, broadcast to the room
+                    io.to(room.host).emit('gameStart', { side: 'left' });
+                }
+            } catch (e) {
+                console.error('Error sending to host:', e);
+                // Fallback method
+                io.to(room.host).emit('gameStart', { side: 'left' });
             }
-
-            // Start game
-            io.to(opponent).emit('gameStart', { side: 'left' });
-            io.to(socket.id).emit('gameStart', { side: 'right' });
+            
+            // Tell the guest (current socket) to start
+            socket.emit('gameStart', { side: 'right' });
+            
+            // Notify the room that the game has started
+            io.to(roomCode).emit('roomFull');
+        } catch (error) {
+            console.error('Error joining game:', error);
+            socket.emit('joinError', { message: 'Failed to join game: ' + error.message });
         }
     });
 
+    // Handle paddle movement
     socket.on('paddleMove', (data) => {
-        console.log('Paddle move received:', socket.id, data);
-        const game = games.get(socket.gameId);
-        if (!game) {
-            console.log('No game found for paddle move');
-            return;
-        }
-
-        const playerIndex = game.state.players.indexOf(socket.id);
-        if (playerIndex === -1) {
-            console.log('Player not found in game');
-            return;
-        }
-
-        const side = playerIndex === 0 ? 'left' : 'right';
-        const moved = game.state.movePaddle(side, data.direction);
-        if (moved) {
-            // Immediately emit the new game state after paddle movement
-            const state = game.state.getState();
-            io.to(game.state.players[0]).to(game.state.players[1]).emit('gameState', state);
-        }
-    });
-
-    socket.on('restartGame', () => {
-        const game = games.get(socket.gameId);
-        if (!game) return;
-
-        console.log('Restarting game:', socket.gameId);
-        game.state = new GameState(...game.state.players);
-        io.to(game.state.players[0]).to(game.state.players[1]).emit('gameState', game.state.getState());
-    });
-
-    socket.on('disconnect', () => {
-        console.log('Player disconnected:', socket.id);
-        waitingPlayers.delete(socket.id);
-        
-        const game = games.get(socket.gameId);
-        if (game) {
-            clearInterval(game.interval);
-            const opponent = game.state.players.find(id => id !== socket.id);
-            if (opponent) {
-                io.to(opponent).emit('opponentLeft');
+        try {
+            const roomCode = playerToRoom.get(socket.id);
+            if (!roomCode) {
+                console.log('No room found for player on paddle move');
+                return;
             }
-            games.delete(socket.gameId);
+            
+            const room = gameRooms.get(roomCode);
+            if (!room || !room.gameId) {
+                console.log('No room or game ID found for paddle move');
+                return;
+            }
+            
+            const game = games.get(room.gameId);
+            if (!game) {
+                console.log('No game found for paddle move');
+                return;
+            }
+
+            const playerIndex = game.state.players.indexOf(socket.id);
+            if (playerIndex === -1) {
+                console.log('Player not found in game');
+                return;
+            }
+
+            const side = playerIndex === 0 ? 'left' : 'right';
+            const moved = game.state.movePaddle(side, data.direction);
+            if (moved) {
+                // Immediately emit the new game state after paddle movement
+                const state = game.state.getState();
+                io.to(roomCode).emit('gameState', state);
+            }
+        } catch (error) {
+            console.error('Error processing paddle move:', error);
         }
     });
+
+    // Handle rematch request
+    socket.on('rematchRequest', () => {
+        try {
+            const roomCode = playerToRoom.get(socket.id);
+            if (!roomCode) return;
+            
+            const room = gameRooms.get(roomCode);
+            if (!room) return;
+            
+            // Find the opponent's socket ID
+            const opponentId = socket.id === room.host ? room.guest : room.host;
+            if (!opponentId) return;
+            
+            console.log('Rematch requested by', socket.id, 'to', opponentId, 'in room', roomCode);
+            
+            // Store the rematch request
+            rematchRequests.set(roomCode, socket.id);
+            
+            // Send request to opponent
+            io.to(opponentId).emit('rematchRequest');
+        } catch (error) {
+            console.error('Error processing rematch request:', error);
+        }
+    });
+    
+    // Handle rematch response
+    socket.on('rematchResponse', (data) => {
+        try {
+            const roomCode = playerToRoom.get(socket.id);
+            if (!roomCode) return;
+            
+            const room = gameRooms.get(roomCode);
+            if (!room) return;
+            
+            // Get the requester's socket ID
+            const requesterId = rematchRequests.get(roomCode);
+            if (!requesterId) return;
+            
+            console.log('Rematch response from', socket.id, 'accepted:', data.accepted, 'in room', roomCode);
+            
+            // Send response to requester
+            io.to(requesterId).emit('rematchResponse', { accepted: data.accepted });
+            
+            // If accepted, restart the game
+            if (data.accepted) {
+                if (!room.gameId || !games.has(room.gameId)) {
+                    console.log('No active game found to restart');
+                    return;
+                }
+                
+                // Clear the existing game interval
+                clearInterval(games.get(room.gameId).interval);
+                
+                // Create a new game state
+                const gameState = new GameState(room.host, room.guest);
+                
+                // Set up a new game interval
+                games.set(room.gameId, {
+                    state: gameState,
+                    roomCode: roomCode,
+                    interval: setInterval(() => {
+                        gameState.update();
+                        const state = gameState.getState();
+                        io.to(roomCode).emit('gameState', state);
+                    }, UPDATE_RATE)
+                });
+                
+                // Notify both players that the game has restarted
+                io.to(room.host).emit('gameStart', { side: 'left' });
+                io.to(room.guest).emit('gameStart', { side: 'right' });
+                
+                console.log('Game restarted in room:', roomCode);
+            }
+            
+            // Clear the rematch request
+            rematchRequests.delete(roomCode);
+        } catch (error) {
+            console.error('Error processing rematch response:', error);
+        }
+    });
+
+    // Handle player leaving game manually (via Quit button)
+    socket.on('leaveGame', () => {
+        try {
+            console.log('Player leaving game manually:', socket.id);
+            handlePlayerLeaving(socket.id, true);
+        } catch (error) {
+            console.error('Error handling leave game:', error);
+        }
+    });
+
+    // Handle disconnection
+    socket.on('disconnect', () => {
+        try {
+            console.log('Player disconnected:', socket.id);
+            handlePlayerLeaving(socket.id, false);
+        } catch (error) {
+            console.error('Error handling disconnect:', error);
+        }
+    });
+    
+    // Helper function for handling player leaving (either by disconnect or manual quit)
+    function handlePlayerLeaving(playerId, isManualQuit) {
+        // Check if player was in a room
+        const roomCode = playerToRoom.get(playerId);
+        if (roomCode) {
+            const room = gameRooms.get(roomCode);
+            
+            if (room) {
+                // Determine if this player was host or guest
+                const isHost = room.host === playerId;
+                const otherPlayerId = isHost ? room.guest : room.host;
+                
+                // If a game was in progress, end it
+                if (room.gameId && games.has(room.gameId)) {
+                    clearInterval(games.get(room.gameId).interval);
+                    games.delete(room.gameId);
+                    console.log('Game deleted:', room.gameId);
+                }
+                
+                // Notify the other player if they exist
+                if (otherPlayerId) {
+                    io.to(otherPlayerId).emit('opponentLeft');
+                    console.log('Notified opponent about player leaving');
+                }
+                
+                // Clean up rematch requests if any
+                if (rematchRequests.has(roomCode)) {
+                    rematchRequests.delete(roomCode);
+                }
+                
+                // If manual quit or disconnect, completely remove the room
+                gameRooms.delete(roomCode);
+                console.log('Room deleted:', roomCode);
+            }
+            
+            // Remove player from room mapping
+            playerToRoom.delete(playerId);
+        }
+    }
 });
 
 const PORT = process.env.PORT || 3000;
