@@ -1,0 +1,1541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Glow Snake Multiplayer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Arial', sans-serif;
+            background-color: #1a1a1a;
+            box-sizing: border-box;
+            overflow-x: hidden;
+        }
+        
+        .game-wrapper {
+            position: relative;
+            width: 95%;
+            max-width: 800px;
+            text-align: center;
+            padding: 5px;
+            box-sizing: border-box;
+            margin: 0;
+        }
+
+        #phaser-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            aspect-ratio: 4/3;
+            margin: 0 auto;
+            background-color: #2d2d2d;
+            border: 4px solid #555;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+            overflow: hidden;
+        }
+
+        canvas {
+            width: 100% !important;
+            height: 100% !important;
+            display: block !important;
+        }
+
+        .scoreboard {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #333;
+            border-radius: 8px;
+            color: white;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+
+        .profile {
+            padding: 8px 15px;
+            border-radius: 6px;
+            font-size: clamp(14px, 3vw, 20px);
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+            margin: 5px;
+        }
+
+        .profile.left {
+            background-color: rgba(255, 0, 0, 0.25);
+            border: 2px solid #ff3333;
+        }
+
+        .profile.right {
+            background-color: rgba(0, 0, 255, 0.25);
+            border: 2px solid #3333ff;
+        }
+
+        .waiting-message {
+            color: white;
+            font-size: clamp(16px, 4vw, 24px);
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: block;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            z-index: 50;
+            width: 80%;
+            max-width: 320px;
+            text-align: center;
+        }
+
+        .timers {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            color: white;
+            font-size: clamp(16px, 3vw, 24px);
+            font-weight: bold;
+            z-index: 100;
+            text-shadow: 0 0 5px rgba(0, 0, 0, 0.7);
+        }
+
+        .main-timer {
+            margin-bottom: 5px;
+            transition: color 0.3s ease;
+        }
+
+        .food-timer {
+            font-size: clamp(14px, 2.5vw, 18px);
+            color: #ffff00;
+            transition: color 0.3s ease;
+        }
+
+        .shake {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        .timer-warning {
+            color: #ff5555;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translateX(-1px); }
+            20%, 80% { transform: translateX(2px); }
+            30%, 50%, 70% { transform: translateX(-4px); }
+            40%, 60% { transform: translateX(4px); }
+        }
+
+        .controls-container {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            justify-content: center;
+            z-index: 100;
+            width: 200px;
+            height: 200px;
+        }
+
+        .player-controls {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* FIXED CONTROLS WITH !important ON ALL PROPERTIES */
+        .control-btn {
+            position: absolute !important;
+            width: 60px !important;
+            height: 60px !important;
+            border-radius: 50% !important;
+            border: 2px solid rgba(255, 255, 255, 0.7) !important;
+            background-color: rgba(50, 50, 50, 0.6) !important;
+            color: white !important;
+            cursor: pointer !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            font-size: 24px !important;
+            transition: all 0.2s !important;
+            touch-action: manipulation !important;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.4) !important;
+            -webkit-tap-highlight-color: transparent !important;
+            user-select: none !important;
+            -webkit-user-select: none !important;
+        }
+
+        .control-btn:active, .control-btn.active {
+            background-color: rgba(0, 255, 0, 0.6) !important;
+        }
+
+        .up { 
+            top: 0 !important; 
+            left: 50% !important; 
+            transform: translateX(-50%) !important; 
+        }
+        
+        .down { 
+            bottom: 0 !important; 
+            left: 50% !important; 
+            transform: translateX(-50%) !important; 
+        }
+        
+        .left { 
+            top: 50% !important; 
+            left: 0 !important; 
+            transform: translateY(-50%) !important; 
+        }
+        
+        .right { 
+            top: 50% !important; 
+            right: 0 !important; 
+            transform: translateY(-50%) !important; 
+        }
+
+        .controls-info {
+            display: none;
+        }
+
+        /* Use transparent background for overlays to maintain game brightness */
+        .game-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.3); /* More transparent */
+            display: none;
+            z-index: 90;
+            pointer-events: auto; /* Allows clicks through to underlying elements */
+        }
+        
+        /* Result popup with more transparent background */
+        .result-popup {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(20, 20, 20, 0.85); /* More transparent */
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+            color: white;
+            width: 85%;
+            max-width: 320px;
+            z-index: 1000;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+            border: 2px solid rgba(0, 255, 0, 0.3);
+        }
+
+        .result-popup h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: clamp(18px, 4vw, 28px);
+            color: white;
+            text-shadow: 0 0 8px rgba(0, 255, 0, 0.5);
+        }
+
+        .score-line {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: clamp(14px, 3vw, 18px);
+        }
+        
+        .score-line.you {
+            font-weight: bold;
+            color: #55ff55; /* Brighter green to be more visible */
+        }
+
+        .popup-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+        
+        .play-again-btn {
+            padding: 10px 0;
+            width: 48%;
+            font-size: clamp(14px, 3vw, 18px);
+            background: linear-gradient(45deg, #33cc33, #27ae60);
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .quit-btn {
+            padding: 10px 0;
+            width: 48%;
+            font-size: clamp(14px, 3vw, 18px);
+            background: linear-gradient(45deg, #ff3333, #c0392b);
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .play-again-btn:hover, .quit-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+        
+        /* Rematch popup with more transparent background */
+        .rematch-popup {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(20, 20, 20, 0.85); /* More transparent */
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+            color: white;
+            width: 85%;
+            max-width: 350px;
+            z-index: 1000;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+            border: 2px solid rgba(0, 255, 0, 0.3);
+        }
+        
+        .rematch-popup h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: clamp(18px, 4vw, 24px);
+            color: white;
+            text-shadow: 0 0 8px rgba(0, 255, 0, 0.5);
+        }
+        
+        .rematch-popup p {
+            margin-bottom: 20px;
+            font-size: clamp(14px, 3vw, 18px);
+        }
+        
+        .rematch-buttons {
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .accept-btn {
+            padding: 10px 0;
+            width: 48%;
+            font-size: clamp(14px, 3vw, 18px);
+            background: linear-gradient(45deg, #33cc33, #27ae60);
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .decline-btn {
+            padding: 10px 0;
+            width: 48%;
+            font-size: clamp(14px, 3vw, 18px);
+            background: linear-gradient(45deg, #ff3333, #c0392b);
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .accept-btn:hover, .decline-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+        
+        /* Rematch status with more transparent background */
+        .rematch-status {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(20, 20, 20, 0.85); /* More transparent */
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+            color: white;
+            width: 85%;
+            max-width: 300px;
+            z-index: 1000;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+            border: 2px solid rgba(0, 255, 0, 0.3);
+        }
+        
+        /* REMOVE ALL MEDIA QUERIES THAT MODIFY CONTROL BUTTONS */
+        @media (max-width: 768px) {
+            .game-wrapper {
+                padding: 5px;
+                margin: 0;
+                width: 98%;
+            }
+            
+            .scoreboard {
+                padding: 8px;
+                margin-bottom: 8px;
+            }
+            
+            #phaser-container {
+                aspect-ratio: 4/3;
+                max-width: 100%;
+            }
+            
+            body {
+                padding: 0;
+                margin: 0;
+            }
+            
+            /* Container can change position, but not control button sizes */
+            .controls-container {
+                bottom: 20px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .timers {
+                top: 5px;
+                font-size: clamp(14px, 3vw, 20px);
+            }
+        }
+
+        /* All touch device overrides removed - NO CONTROL SIZE CHANGES */
+        * { 
+            touch-action: manipulation;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-wrapper">
+        <div class="scoreboard">
+            <div class="profile left" id="profileLeft">Waiting for Player 1</div>
+            <div class="profile right" id="profileRight">Waiting for Player 2</div>
+        </div>
+        
+        <div id="phaser-container">
+            <div class="timers">
+                <div id="mainTimer" class="main-timer">Time: 60</div>
+                <div id="foodTimer" class="food-timer">Food: 10</div>
+            </div>
+            <div class="waiting-message" id="waitingMessage">
+                Waiting for another player to join...
+            </div>
+            
+            <!-- Controls are now inside the phaser container -->
+            <div class="controls-container">
+                <div class="player-controls">
+                    <button class="control-btn up" id="upButton" data-direction="UP">↑</button>
+                    <button class="control-btn left" id="leftButton" data-direction="LEFT">←</button>
+                    <button class="control-btn right" id="rightButton" data-direction="RIGHT">→</button>
+                    <button class="control-btn down" id="downButton" data-direction="DOWN">↓</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Game overlay -->
+        <div class="game-overlay" id="gameOverlay"></div>
+        
+        <!-- Game result popup -->
+        <div class="result-popup" id="resultPopup">
+            <h2 id="resultTitle">Game Over!</h2>
+            <div id="scoreDisplay">
+                <div class="score-line you">
+                    <span>You:</span>
+                    <span id="yourScore">0</span>
+                </div>
+                <div class="score-line">
+                    <span>Opponent:</span>
+                    <span id="opponentScore">0</span>
+                </div>
+            </div>
+            <div class="popup-buttons">
+                <button class="play-again-btn" onclick="handleRematch()">Play Again</button>
+                <button class="quit-btn" onclick="handleQuit()">Quit</button>
+            </div>
+        </div>
+        
+        <!-- Rematch request popup (for the opponent to respond) -->
+        <div class="rematch-popup" id="rematchPopup">
+            <h2>Rematch Request</h2>
+            <p>Your opponent wants to play again. Do you accept?</p>
+            <div class="rematch-buttons">
+                <button class="accept-btn" onclick="acceptRematch()">Accept</button>
+                <button class="decline-btn" onclick="declineRematch()">Decline</button>
+            </div>
+        </div>
+        
+        <!-- Rematch status message (for the requester) -->
+        <div class="rematch-status" id="rematchStatus">
+            <h2 id="rematchStatusTitle">Waiting for response...</h2>
+            <p id="rematchStatusMessage">Your rematch request has been sent.</p>
+        </div>
+    </div>
+
+    <script>
+
+        // Get room ID from URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomId = urlParams.get('room');
+
+        if (!roomId) {
+            // Redirect to home page if no room ID
+            window.location.href = '/';
+        }
+
+        // Responsive game setup
+        let gameWidth = 640;
+        let gameHeight = 480;
+        let gameActive = false;
+        let rematchRequestInProgress = false;
+        let playerId = null;
+        let gameState = { players: {} };
+        let currentDirection = null;
+        let socket = null;
+        let game = null;
+        let touchControlActive = false;
+        let controlState = {
+            up: false,
+            down: false,
+            left: false,
+            right: false
+        };
+        
+        // Debug flag
+        const DEBUG = true;
+        
+        function debugLog(...args) {
+            if (DEBUG) {
+                console.log(...args);
+            }
+        }
+        
+        // Initialize the game after the document has loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            debugLog("Document loaded, initializing game");
+            initializeGame();
+            setupResponsiveListeners();
+            enhanceControlButtons();
+        });
+        
+        function initializeGame() {
+            try {
+                // Initialize socket connection - connect to the same domain
+                debugLog("Initializing socket connection...");
+                socket = io();
+                
+                // Add error handling for Socket.io
+                socket.on('connect_error', (error) => {
+                    console.error('Socket connection error:', error);
+                });
+                
+                socket.on('disconnect', (reason) => {
+                    console.warn('Socket disconnected:', reason);
+                });
+                
+                // Set up Phaser game configuration
+                const config = {
+                    type: Phaser.AUTO,
+                    width: gameWidth,
+                    height: gameHeight,
+                    parent: 'phaser-container',
+                    scene: [ SnakeScene ],
+                    physics: {
+                        default: 'arcade',
+                        arcade: {
+                            debug: false
+                        }
+                    },
+                    scale: {
+                        mode: Phaser.Scale.RESIZE,
+                        autoCenter: Phaser.Scale.CENTER_BOTH
+                    },
+                    backgroundColor: 0x252525 // Brighter game background
+                };
+                
+                debugLog("Creating Phaser game instance...");
+                // Create the game
+                game = new Phaser.Game(config);
+                
+                // Set up socket event handlers
+                setupSocketEvents();
+                
+                // Add debug info
+                debugLog("Game initialization complete");
+            } catch (error) {
+                console.error("Error initializing game:", error);
+            }
+        }
+        
+        function setupSocketEvents() {
+            socket.on('connect', () => {
+                debugLog('Connected to server with ID:', socket.id);
+
+                // Initialize game with room ID
+                socket.emit('initializeGame', { roomId: roomId });
+            });
+            
+            // Initial game state from server
+            socket.on('initialize', (data) => {
+                debugLog('Game initialized:', data);
+                playerId = data.playerId;
+                gameState = data.gameState;
+                
+                // Ensure players have consistent colors
+                if (gameState && gameState.players) {
+                    Object.entries(gameState.players).forEach(([id, player], index) => {
+                        // First player (index 0) is always red, second player is always blue
+                        player.color = index === 0 ? 'red' : 'blue';
+                    });
+                }
+                
+                updateUI(gameState);
+                
+                // Force an initial game scene update
+                const scene = game.scene.getScene('SnakeScene');
+                if (scene) {
+                    scene.updateGame();
+                }
+            });
+            
+            // Regular game state updates
+            socket.on('update', (state) => {
+                // Only log less frequently to avoid console spam
+                if (Math.random() < 0.05) debugLog('Game state updated');
+                
+                gameState = state;
+                
+                // Ensure players have consistent colors on every update
+                if (gameState && gameState.players) {
+                    Object.entries(gameState.players).forEach(([id, player], index) => {
+                        // First player (index 0) is always red, second player is always blue
+                        player.color = index === 0 ? 'red' : 'blue';
+                    });
+                }
+                
+                // Check if game is active
+                gameActive = state.isActive;
+                
+                // Update UI
+                updateUI(state);
+                
+                // Hide waiting message when game is active
+                document.getElementById('waitingMessage').style.display = gameActive ? 'none' : 'block';
+                
+                // Update the game scene
+                const scene = game.scene.getScene('SnakeScene');
+                if (scene) {
+                    scene.gameActive = gameActive;
+                    scene.updateGame();
+                }
+            });
+            
+            socket.on('gameStarted', () => {
+                debugLog('Game started!');
+                document.getElementById('waitingMessage').style.display = 'none';
+                gameActive = true;
+                
+                // Update the game scene
+                const scene = game.scene.getScene('SnakeScene');
+                if (scene) {
+                    scene.gameActive = true;
+                }
+            });
+            
+            socket.on('gameOver', (data) => {
+                debugLog('Game over:', data);
+                handleGameOver(data);
+            });
+            
+            socket.on('rematchRequested', (data) => {
+                handleRematchRequested(data);
+            });
+            
+            socket.on('rematchRequestSent', () => {
+                handleRematchRequestSent();
+            });
+            
+            socket.on('rematchAccepted', () => {
+                handleRematchAccepted();
+            });
+            
+            socket.on('rematchDeclined', () => {
+                handleRematchDeclined();
+            });
+            
+            socket.on('rematchFailed', (data) => {
+                handleRematchFailed(data);
+            });
+            
+            socket.on('gameRestarted', (data) => {
+                debugLog('Game restarted:', data);
+                gameState = data.gameState;
+                
+                // Ensure players have consistent colors on game restart
+                if (gameState && gameState.players) {
+                    Object.entries(gameState.players).forEach(([id, player], index) => {
+                        // First player (index 0) is always red, second player is always blue
+                        player.color = index === 0 ? 'red' : 'blue';
+                    });
+                }
+                
+                updateUI(gameState);
+                
+                // Important: Keep drawing the game while showing/hiding popups
+                // This ensures the game stays visible and bright during transitions
+                const scene = game.scene.getScene('SnakeScene');
+                if (scene) {
+                    scene.updateGame();
+                }
+                
+                hideGameResult();
+                hideRematchPopups();
+            });
+            
+            socket.on('playerJoined', (data) => {
+                debugLog('Player joined:', data);
+                // Force UI update
+                updateUI(gameState);
+            });
+            
+            socket.on('playerLeft', (data) => {
+                debugLog('Player left:', data);
+                gameActive = false;
+                document.getElementById('waitingMessage').style.display = 'block';
+                document.getElementById('waitingMessage').textContent = 'Opponent left. Waiting for new player...';
+            });
+            
+            socket.on('gameQuit', () => {
+                debugLog('Game was quit');
+                gameActive = false;
+                document.getElementById('waitingMessage').style.display = 'block';
+                hideGameResult();
+                hideRematchPopups();
+                
+                // Continue rendering the game even when it's quit
+                const scene = game.scene.getScene('SnakeScene');
+                if (scene) {
+                    scene.updateGame();
+                }
+            });
+        }
+        
+        function setupResponsiveListeners() {
+            // Adjust game on window resize
+            window.addEventListener('resize', function() {
+                updateGameDimensions();
+            });
+            
+            // Handle orientation change on mobile devices
+            window.addEventListener('orientationchange', function() {
+                // Wait for orientation change to complete
+                setTimeout(function() {
+                    updateGameDimensions();
+                }, 200);
+            });
+            
+            // Initial update
+            updateGameDimensions();
+            
+            // Set up keyboard controls
+            window.addEventListener('keydown', function(e) {
+                if (gameActive) {
+                    handleKeyInput(e);
+                }
+            });
+        }
+        
+        function handleKeyInput(e) {
+            if (!gameActive) return;
+            
+            let direction = null;
+            
+            // Arrow keys
+            if (e.key === 'ArrowUp') {
+                direction = 'UP';
+            } else if (e.key === 'ArrowDown') {
+                direction = 'DOWN';
+            } else if (e.key === 'ArrowLeft') {
+                direction = 'LEFT';
+            } else if (e.key === 'ArrowRight') {
+                direction = 'RIGHT';
+            }
+            
+            // WASD keys (as alternatives)
+            if (e.key === 'w' || e.key === 'W') {
+                direction = 'UP';
+            } else if (e.key === 's' || e.key === 'S') {
+                direction = 'DOWN';
+            } else if (e.key === 'a' || e.key === 'A') {
+                direction = 'LEFT';
+            } else if (e.key === 'd' || e.key === 'D') {
+                direction = 'RIGHT';
+            }
+            
+            if (direction) {
+                // Send direction to server
+                socket.emit('move', { direction: direction });
+                currentDirection = direction;
+            }
+        }
+        
+        // Helper functions for rematch UI with consistent brightness
+        function showRematchPopup() {
+            document.getElementById('gameOverlay').style.display = 'block';
+            document.getElementById('rematchPopup').style.display = 'block';
+            
+            // Continue rendering the game even with popup visible
+            const scene = game.scene.getScene('SnakeScene');
+            if (scene) {
+                scene.updateGame();
+            }
+        }
+        
+        function hideRematchPopup() {
+            document.getElementById('rematchPopup').style.display = 'none';
+        }
+        
+        function showRematchStatus(message, title = "Waiting for response...") {
+            document.getElementById('gameOverlay').style.display = 'block';
+            document.getElementById('rematchStatus').style.display = 'block';
+            document.getElementById('rematchStatusTitle').textContent = title;
+            document.getElementById('rematchStatusMessage').textContent = message;
+            
+            // Continue rendering the game even with status visible
+            const scene = game.scene.getScene('SnakeScene');
+            if (scene) {
+                scene.updateGame();
+            }
+        }
+        
+        function hideRematchStatus() {
+            document.getElementById('rematchStatus').style.display = 'none';
+        }
+        
+        function hideRematchPopups() {
+            hideRematchPopup();
+            hideRematchStatus();
+            
+            // Only hide overlay if no other popups are visible
+            if (document.getElementById('resultPopup').style.display !== 'block') {
+                document.getElementById('gameOverlay').style.display = 'none';
+            }
+            
+            // Continue rendering the game even after hiding popups
+            const scene = game.scene.getScene('SnakeScene');
+            if (scene) {
+                scene.updateGame();
+            }
+        }
+        
+        // Handle rematch request from opponent
+        function handleRematchRequested(data) {
+            debugLog('Rematch requested by opponent');
+            hideGameResult();
+            showRematchPopup();
+            
+            // Continue rendering the game even with popup visible
+            const scene = game.scene.getScene('SnakeScene');
+            if (scene) {
+                scene.updateGame();
+            }
+        }
+        
+        // Handle confirmation that our rematch request was sent
+        function handleRematchRequestSent() {
+            debugLog('Rematch request sent');
+            hideGameResult();
+            showRematchStatus('Waiting for your opponent to respond...');
+            rematchRequestInProgress = true;
+            
+            // Continue rendering the game even with status visible
+            const scene = game.scene.getScene('SnakeScene');
+            if (scene) {
+                scene.updateGame();
+            }
+        }
+        
+        // Handle opponent accepting our rematch request
+        function handleRematchAccepted() {
+            debugLog('Rematch accepted by opponent');
+            hideRematchPopups();
+            rematchRequestInProgress = false;
+            
+            // Continue rendering the game after acceptance
+            const scene = game.scene.getScene('SnakeScene');
+            if (scene) {
+                scene.updateGame();
+            }
+        }
+        
+        // Handle opponent declining our rematch request
+        function handleRematchDeclined() {
+            debugLog('Rematch declined by opponent');
+            rematchRequestInProgress = false;
+            hideRematchStatus();
+            showRematchStatus('Your opponent declined the rematch.', 'Rematch Declined');
+            
+            // Continue rendering the game even with status visible
+            const scene = game.scene.getScene('SnakeScene');
+            if (scene) {
+                scene.updateGame();
+            }
+            
+            // Automatically hide after a few seconds
+            setTimeout(() => {
+                hideRematchPopups();
+                document.getElementById('gameOverlay').style.display = 'none';
+                document.getElementById('waitingMessage').style.display = 'block';
+                
+                // Continue rendering the game after hiding popups
+                const scene = game.scene.getScene('SnakeScene');
+                if (scene) {
+                    scene.updateGame();
+                }
+            }, 3000);
+        }
+        
+        // Handle rematch request failure
+        function handleRematchFailed(data) {
+            debugLog('Rematch failed:', data);
+            rematchRequestInProgress = false;
+            hideRematchStatus();
+            showRematchStatus(`Rematch failed: ${data.reason}`, 'Rematch Failed');
+            
+            // Continue rendering the game even with status visible
+            const scene = game.scene.getScene('SnakeScene');
+            if (scene) {
+                scene.updateGame();
+            }
+            
+            // Automatically hide after a few seconds
+            setTimeout(() => {
+                hideRematchPopups();
+                document.getElementById('gameOverlay').style.display = 'none';
+                
+                // Continue rendering the game after hiding popups
+                const scene = game.scene.getScene('SnakeScene');
+                if (scene) {
+                    scene.updateGame();
+                }
+            }, 3000);
+        }
+        
+        // Handle rematch button click
+        function handleRematch() {
+            if (rematchRequestInProgress) {
+                return; // Prevent multiple requests
+            }
+            
+            debugLog('Requesting rematch');
+            socket.emit('requestRematch');
+            hideGameResult();
+            
+            // Continue rendering the game after requesting rematch
+            const scene = game.scene.getScene('SnakeScene');
+            if (scene) {
+                scene.updateGame();
+            }
+        }
+        
+        // Accept rematch
+        function acceptRematch() {
+            debugLog('Accepting rematch');
+            socket.emit('acceptRematch');
+            hideRematchPopup();
+            
+            // Continue rendering the game after accepting rematch
+            const scene = game.scene.getScene('SnakeScene');
+            if (scene) {
+                scene.updateGame();
+            }
+        }
+        
+        // Decline rematch
+        function declineRematch() {
+            debugLog('Declining rematch');
+            socket.emit('declineRematch');
+            hideRematchPopup();
+            document.getElementById('gameOverlay').style.display = 'none';
+            document.getElementById('waitingMessage').style.display = 'block';
+            
+            // Continue rendering the game after declining rematch
+            const scene = game.scene.getScene('SnakeScene');
+            if (scene) {
+                scene.updateGame();
+            }
+        }
+        
+        // Handle quit button click
+        function handleQuit() {
+            debugLog('Quitting game');
+            socket.emit('quit');
+            hideGameResult();
+            document.getElementById('waitingMessage').style.display = 'block';
+            
+            // Continue rendering the game after quitting
+            const scene = game.scene.getScene('SnakeScene');
+            if (scene) {
+                scene.updateGame();
+            }
+        }
+        
+        // Function to show game result popup with consistent brightness
+        function showGameResult(title, isCollision, finalScores) {
+            gameActive = false;
+            
+            // Set the title
+            document.getElementById('resultTitle').textContent = title;
+            
+            // Update scores
+            let yourScore = 0;
+            let opponentScore = 0;
+            
+            if (finalScores) {
+                // Use the provided final scores
+                Object.entries(finalScores).forEach(([id, score]) => {
+                    if (id === playerId) {
+                        yourScore = score;
+                    } else {
+                        opponentScore = score;
+                    }
+                });
+            } else if (gameState.players) {
+                // Get scores from current game state
+                Object.entries(gameState.players).forEach(([id, player]) => {
+                    if (id === playerId) {
+                        yourScore = player.score;
+                    } else {
+                        opponentScore = player.score;
+                    }
+                });
+            }
+            
+            document.getElementById('yourScore').textContent = yourScore;
+            document.getElementById('opponentScore').textContent = opponentScore;
+            
+            // Show the popup and overlay
+            document.getElementById('gameOverlay').style.display = 'block';
+            document.getElementById('resultPopup').style.display = 'block';
+            
+            // Continue rendering the game even with popup visible
+            const scene = game.scene.getScene('SnakeScene');
+            if (scene) {
+                scene.updateGame();
+            }
+        }
+        
+        // Function to handle game over from server
+        function handleGameOver(data) {
+            gameActive = false;
+            
+            let title = "Game Over!";
+            if (!data.isTie) {
+                title = data.winnerId === playerId ? "Game Over! You Win!" : "Game Over! Opponent Wins!";
+            }
+            
+            showGameResult(title, false, data.finalScores);
+            
+            // Continue rendering the game even after game over
+            const scene = game.scene.getScene('SnakeScene');
+            if (scene) {
+                scene.updateGame();
+            }
+        }
+        
+        function hideGameResult() {
+            document.getElementById('resultPopup').style.display = 'none';
+            
+            // Only hide overlay if no other popups are visible
+            if (document.getElementById('rematchPopup').style.display !== 'block' && 
+                document.getElementById('rematchStatus').style.display !== 'block') {
+                document.getElementById('gameOverlay').style.display = 'none';
+            }
+            
+            // Continue rendering the game after hiding result
+            const scene = game.scene.getScene('SnakeScene');
+            if (scene) {
+                scene.updateGame();
+            }
+        }
+        
+        function updateUI(gameState) {
+            const profileLeft = document.getElementById('profileLeft');
+            const profileRight = document.getElementById('profileRight');
+            
+            // Reset displays first
+            profileLeft.innerHTML = 'Waiting for Player 1';
+            profileRight.innerHTML = 'Waiting for Player 2';
+            
+            // Check if we have valid players data
+            if (gameState && gameState.players) {
+                const players = Object.entries(gameState.players);
+                
+                if (players.length > 0) {
+                    const [id1, player1] = players[0];
+                    profileLeft.innerHTML = `Player 1: ${player1.score}`;
+                    profileLeft.style.color = '#ff5555'; // Brighter red text
+                    // Ensure player1 has the red color property
+                    player1.color = 'red';
+                }
+                
+                if (players.length > 1) {
+                    const [id2, player2] = players[1];
+                    profileRight.innerHTML = `Player 2: ${player2.score}`;
+                    profileRight.style.color = '#5555ff'; // Brighter blue text
+                    // Ensure player2 has the blue color property
+                    player2.color = 'blue';
+                }
+            }
+
+            // Update waiting message
+            const waitingMessage = document.getElementById('waitingMessage');
+            if (gameState && gameState.players) {
+                waitingMessage.style.display = Object.keys(gameState.players).length < 2 ? 'block' : 'none';
+            } else {
+                waitingMessage.style.display = 'block';
+            }
+
+            // Update timers
+            if (gameState) {
+                if (gameState.gameTimer !== undefined) {
+                    updateMainTimer(gameState.gameTimer);
+                }
+                
+                if (gameState.foodTimer !== undefined) {
+                    updateFoodTimer(gameState.foodTimer);
+                }
+            }
+            
+            // Continue rendering the game after UI update
+            const scene = game.scene.getScene('SnakeScene');
+            if (scene) {
+                scene.updateGame();
+            }
+        }
+
+        function updateMainTimer(time) {
+            const mainTimer = document.getElementById('mainTimer');
+            mainTimer.textContent = `Time: ${time}`;
+            
+            if (time <= 10) {
+                mainTimer.classList.add('timer-warning');
+                if (!mainTimer.classList.contains('shake')) {
+                    mainTimer.classList.add('shake');
+                    setTimeout(() => mainTimer.classList.remove('shake'), 500);
+                }
+            } else {
+                mainTimer.classList.remove('timer-warning');
+                mainTimer.classList.remove('shake');
+            }
+        }
+
+        function updateFoodTimer(time) {
+            const foodTimer = document.getElementById('foodTimer');
+            foodTimer.textContent = `Food: ${time}`;
+            
+            if (time <= 5) {
+                foodTimer.classList.add('timer-warning');
+                if (!foodTimer.classList.contains('shake')) {
+                    foodTimer.classList.add('shake');
+                    setTimeout(() => foodTimer.classList.remove('shake'), 500);
+                }
+            } else {
+                foodTimer.classList.remove('timer-warning');
+                foodTimer.classList.remove('shake');
+            }
+        }
+
+        // Function to update game dimensions based on container size
+        function updateGameDimensions() {
+            const container = document.getElementById('phaser-container');
+            if (!container) return;
+            
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+            
+            if (game && game.scale) {
+                // Update Phaser game size
+                game.scale.resize(containerWidth, containerHeight);
+                
+                // Force canvas to use the container's dimensions
+                const canvas = container.querySelector('canvas');
+                if (canvas) {
+                    canvas.style.width = '100%';
+                    canvas.style.height = '100%';
+                }
+                
+                // Update game variables to maintain grid alignment
+                const scene = game.scene.getScene('SnakeScene');
+                if (scene) {
+                    scene.updateGameDimensions(containerWidth, containerHeight);
+                }
+            }
+        }
+
+        // COMPLETELY REWRITTEN to ensure controls never change size or position 
+        function enhanceControlButtons() {
+            // Get all control buttons
+            const buttons = document.querySelectorAll('.control-btn');
+            
+            // Remove any existing event listeners
+            buttons.forEach(btn => {
+                btn.replaceWith(btn.cloneNode(true));
+            });
+            
+            // Re-get fresh button references
+            const upButton = document.getElementById('upButton');
+            const downButton = document.getElementById('downButton');
+            const leftButton = document.getElementById('leftButton');
+            const rightButton = document.getElementById('rightButton');
+            
+            const controlButtons = [upButton, downButton, leftButton, rightButton];
+            
+            // Visual feedback functions
+            function pressEffect(button) {
+                button.classList.add('active');
+            }
+            
+            function releaseEffect(button) {
+                button.classList.remove('active');
+            }
+            
+            // Direction change function
+            function changeDirection(direction) {
+                if (!gameActive) return;
+                
+                // Send direction change to server
+                socket.emit('move', { direction: direction });
+                currentDirection = direction;
+            }
+            
+            // Add mouse events
+            controlButtons.forEach(btn => {
+                const direction = btn.dataset.direction;
+                
+                btn.addEventListener('mousedown', function(e) {
+                    e.preventDefault();
+                    pressEffect(btn);
+                    changeDirection(direction);
+                });
+                
+                btn.addEventListener('mouseup', function() {
+                    releaseEffect(btn);
+                });
+                
+                btn.addEventListener('mouseleave', function() {
+                    releaseEffect(btn);
+                });
+            });
+            
+            // Add touch events with fixed behavior
+            controlButtons.forEach(btn => {
+                const direction = btn.dataset.direction;
+                
+                // Touch start
+                btn.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    pressEffect(btn);
+                    changeDirection(direction);
+                    touchControlActive = true;
+                }, { passive: false });
+                
+                // Touch end
+                btn.addEventListener('touchend', function(e) {
+                    e.preventDefault();
+                    releaseEffect(btn);
+                    touchControlActive = false;
+                }, { passive: false });
+                
+                // Touch cancel
+                btn.addEventListener('touchcancel', function(e) {
+                    e.preventDefault();
+                    releaseEffect(btn);
+                    touchControlActive = false;
+                }, { passive: false });
+            });
+            
+            // Handle touch moves in a way that doesn't move controls
+            document.addEventListener('touchmove', function(e) {
+                if (!gameActive) return;
+                
+                // Prevent scrolling behavior
+                e.preventDefault();
+                
+                if (!touchControlActive) return;
+                
+                const touch = e.touches[0];
+                
+                // Check which button the touch is over without moving them
+                for (let btn of controlButtons) {
+                    const rect = btn.getBoundingClientRect();
+                    
+                    // If touch is within this button
+                    if (touch.clientX >= rect.left && touch.clientX <= rect.right &&
+                        touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+                        
+                        // Only change if not already active
+                        if (!btn.classList.contains('active')) {
+                            // Reset all buttons
+                            controlButtons.forEach(b => releaseEffect(b));
+                            
+                            // Activate this button
+                            pressEffect(btn);
+                            
+                            // Send direction
+                            changeDirection(btn.dataset.direction);
+                        }
+                        break;
+                    }
+                }
+            }, { passive: false });
+            
+            debugLog("Control buttons initialized with fixed 60px size");
+        }
+
+        // Snake Scene Class with consistent brightness
+        class SnakeScene extends Phaser.Scene {
+            constructor() {
+                super({ key: 'SnakeScene' });
+                this.gridSize =
+                 16;
+                this.lastDirection = null;
+                this.gameActive = false;
+                this.scaleFactor = 1;
+                this.grid = null;
+                this.playerColor = null;
+                this.isDrawingEnabled = true; // Always draw the game
+            }
+
+            create() {
+                this.drawGrid();
+                
+                // Create graphics objects for snake and food
+                this.snakeGraphics = this.add.graphics();
+                this.foodGraphics = this.add.graphics();
+                
+                // Initial update of dimensions
+                this.updateGameDimensions(this.game.scale.width, this.game.scale.height);
+                
+                // Set up a continuous render loop to maintain visibility
+                this.events.on('update', this.continuousRender, this);
+            }
+            
+            // Ensure the game is continuously rendered
+            continuousRender() {
+                if (this.isDrawingEnabled) {
+                    this.updateGame();
+                }
+            }
+            
+            updateGameDimensions(width, height) {
+                // Calculate the scale factor to maintain grid alignment
+                this.scaleFactor = Math.min(width / gameWidth, height / gameHeight);
+                this.gridSize = 16 * this.scaleFactor;
+                
+                // Redraw grid with new dimensions
+                this.drawGrid();
+                
+                // Redraw elements with new scale
+                this.updateGame();
+            }
+            
+            drawGrid() {
+                // Clear any existing grid
+                if (this.grid) {
+                    this.grid.clear();
+                } else {
+                    this.grid = this.add.graphics();
+                }
+                
+                // Draw grid lines with brighter color
+                this.grid.lineStyle(1, 0x444444, 0.4); // Brighter grid lines
+                
+                // Calculate number of grid cells
+                const cols = Math.ceil(this.game.scale.width / this.gridSize);
+                const rows = Math.ceil(this.game.scale.height / this.gridSize);
+                
+                // Draw vertical lines
+                for (let i = 0; i <= cols; i++) {
+                    this.grid.moveTo(i * this.gridSize, 0);
+                    this.grid.lineTo(i * this.gridSize, rows * this.gridSize);
+                }
+                
+                // Draw horizontal lines
+                for (let i = 0; i <= rows; i++) {
+                    this.grid.moveTo(0, i * this.gridSize);
+                    this.grid.lineTo(cols * this.gridSize, i * this.gridSize);
+                }
+                
+                this.grid.strokePath();
+            }
+            
+            updateGame() {
+                // Clear previous graphics
+                this.snakeGraphics.clear();
+                this.foodGraphics.clear();
+                
+                if (!gameState || !gameState.players) {
+                    debugLog("No valid game state available to render");
+                    return;
+                }
+                
+                // Draw each player's snake
+                const players = Object.entries(gameState.players);
+                players.forEach(([id, player], index) => {
+                    if (!player.snake || player.snake.length === 0) {
+                        return;
+                    }
+                    
+                    // Set color based on player index - brighter colors
+                    const color = index === 0 ? 0xff3333 : 0x3333ff; // Brighter red and blue
+                    
+                    // Ensure the player color is set properly in the player object
+                    player.color = index === 0 ? 'red' : 'blue';
+                    
+                    // Draw snake body segments
+                    this.snakeGraphics.fillStyle(color, 0.8); // Brighter snake body
+                    
+                    // Draw each segment of the snake
+                    player.snake.forEach((segment, i) => {
+                        // Head has a different style
+                        if (i === 0) {
+                            this.snakeGraphics.fillStyle(color, 1);
+                            // Draw slightly larger head
+                            this.snakeGraphics.fillRect(
+                                segment.x * this.gridSize - 1, 
+                                segment.y * this.gridSize - 1, 
+                                this.gridSize + 2, 
+                                this.gridSize + 2
+                            );
+                            
+                            // Add glow effect to head
+                            this.snakeGraphics.fillStyle(color, 0.3);
+                            this.snakeGraphics.fillRect(
+                                segment.x * this.gridSize - 3,
+                                segment.y * this.gridSize - 3,
+                                this.gridSize + 6,
+                                this.gridSize + 6
+                            );
+                            
+                            // Draw eyes
+                            this.snakeGraphics.fillStyle(0xffffff, 1);
+                            
+                            // Position eyes based on direction
+                            const eyeSize = this.gridSize / 5;
+                            let eyeOffset1X = 0, eyeOffset1Y = 0;
+                            let eyeOffset2X = 0, eyeOffset2Y = 0;
+                            
+                            if (player.direction === 'UP') {
+                                eyeOffset1X = -this.gridSize / 4;
+                                eyeOffset1Y = -this.gridSize / 4;
+                                eyeOffset2X = this.gridSize / 4;
+                                eyeOffset2Y = -this.gridSize / 4;
+                            } else if (player.direction === 'DOWN') {
+                                eyeOffset1X = -this.gridSize / 4;
+                                eyeOffset1Y = this.gridSize / 4;
+                                eyeOffset2X = this.gridSize / 4;
+                                eyeOffset2Y = this.gridSize / 4;
+                            } else if (player.direction === 'LEFT') {
+                                eyeOffset1X = -this.gridSize / 4;
+                                eyeOffset1Y = -this.gridSize / 4;
+                                eyeOffset2X = -this.gridSize / 4;
+                                eyeOffset2Y = this.gridSize / 4;
+                            } else if (player.direction === 'RIGHT') {
+                                eyeOffset1X = this.gridSize / 4;
+                                eyeOffset1Y = -this.gridSize / 4;
+                                eyeOffset2X = this.gridSize / 4;
+                                eyeOffset2Y = this.gridSize / 4;
+                            }
+                            
+                            // Draw both eyes
+                            this.snakeGraphics.fillCircle(
+                                segment.x * this.gridSize + this.gridSize / 2 + eyeOffset1X,
+                                segment.y * this.gridSize + this.gridSize / 2 + eyeOffset1Y,
+                                eyeSize
+                            );
+                            
+                            this.snakeGraphics.fillCircle(
+                                segment.x * this.gridSize + this.gridSize / 2 + eyeOffset2X,
+                                segment.y * this.gridSize + this.gridSize / 2 + eyeOffset2Y,
+                                eyeSize
+                            );
+                            
+                            // Reset fill style for body
+                            this.snakeGraphics.fillStyle(color, 0.8);
+                        } else {
+                            // Draw body segment with glow effect
+                            this.snakeGraphics.fillRect(
+                                segment.x * this.gridSize + 1, 
+                                segment.y * this.gridSize + 1, 
+                                this.gridSize - 2, 
+                                this.gridSize - 2
+                            );
+                            
+                            // Add a subtle glow to body segments
+                            this.snakeGraphics.fillStyle(color, 0.3);
+                            this.snakeGraphics.fillRect(
+                                segment.x * this.gridSize, 
+                                segment.y * this.gridSize, 
+                                this.gridSize, 
+                                this.gridSize
+                            );
+                            
+                            // Reset fill style
+                            this.snakeGraphics.fillStyle(color, 0.8);
+                        }
+                    });
+                });
+                
+                // Draw food - IMPORTANT: food is a single object, not an array
+                if (gameState.food) {
+                    this.foodGraphics.fillStyle(0xffff00, 0.9); // Brighter Yellow
+                    
+                    // Calculate pulsing effect based on time
+                    const pulseSize = 0.2 * Math.sin(this.time.now / 200); // Enhanced pulse
+                    const size = this.gridSize * (0.8 + pulseSize);
+                    
+                    // Draw food item
+                    this.foodGraphics.fillCircle(
+                        gameState.food.x * this.gridSize + this.gridSize / 2,
+                        gameState.food.y * this.gridSize + this.gridSize / 2,
+                        size / 2
+                    );
+                    
+                    // Add enhanced glow effect
+                    this.foodGraphics.fillStyle(0xffff00, 0.4); // Stronger glow
+                    this.foodGraphics.fillCircle(
+                        gameState.food.x * this.gridSize + this.gridSize / 2,
+                        gameState.food.y * this.gridSize + this.gridSize / 2,
+                        size * 0.9
+                    );
+                    
+                    // Add outer glow for more brightness
+                    this.foodGraphics.fillStyle(0xffff00, 0.2);
+                    this.foodGraphics.fillCircle(
+                        gameState.food.x * this.gridSize + this.gridSize / 2,
+                        gameState.food.y * this.gridSize + this.gridSize / 2,
+                        size * 1.2
+                    );
+                }
+            }
+        }
+    </script>
+</body>
+</html> 
