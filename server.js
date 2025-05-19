@@ -12,23 +12,13 @@ app.use(express.static('public'));
 // Game constants
 const GRID_WIDTH = 40;
 const GRID_HEIGHT = 30;
-const UPDATE_INTERVAL = 100; // Faster speed for more competitive gameplay
-const GAME_DURATION = 60; // 60 seconds game duration
-const FOOD_DURATION = 10; // 10 seconds food duration
+const UPDATE_INTERVAL = 100;
+const GAME_DURATION = 60;
+const FOOD_DURATION = 10;
 
-// Store game state
-let gameState = {
-    players: {},
-    food: { x: 5, y: 5 },
-    isActive: false,
-    gameTimer: GAME_DURATION,
-    foodTimer: FOOD_DURATION,
-    rematchRequests: {} // Track rematch requests
-};
-
-let gameLoop = null;
-let gameTimer = null;
-let foodTimer = null;
+// Store game state separately from interval handles
+const gameRooms = {};
+const gameIntervals = {};
 
 // Function to wrap position around screen edges
 function wrapPosition(pos) {
@@ -38,16 +28,34 @@ function wrapPosition(pos) {
     };
 }
 
-function moveFood() {
-    gameState.food = {
+// Function to get a clean copy of game state for sending to clients
+function getCleanGameState(roomId) {
+    if (!gameRooms[roomId]) return null;
+    
+    // Create a new object with only the data clients need
+    return {
+        players: gameRooms[roomId].players,
+        food: gameRooms[roomId].food,
+        isActive: gameRooms[roomId].isActive,
+        gameTimer: gameRooms[roomId].gameTimer,
+        foodTimer: gameRooms[roomId].foodTimer
+    };
+}
+
+function moveFood(roomId) {
+    if (!gameRooms[roomId]) return;
+    
+    gameRooms[roomId].food = {
         x: Math.floor(Math.random() * GRID_WIDTH),
         y: Math.floor(Math.random() * GRID_HEIGHT)
     };
-    gameState.foodTimer = FOOD_DURATION;
+    gameRooms[roomId].foodTimer = FOOD_DURATION;
 }
 
-function updateSnakePositions() {
-    if (!gameState.isActive) return;
+function updateSnakePositions(roomId) {
+    if (!gameRooms[roomId] || !gameRooms[roomId].isActive) return;
+
+    const gameState = gameRooms[roomId];
 
     Object.entries(gameState.players).forEach(([playerId, player]) => {
         if (!player.direction) return;
@@ -81,58 +89,86 @@ function updateSnakePositions() {
             if (otherId !== playerId) {
                 if (otherPlayer.snake.some(segment => 
                     segment.x === head.x && segment.y === head.y)) {
-                    endGame(otherId);
+                    endGame(roomId, otherId);
                 }
             }
         });
     });
 
-    io.emit('update', gameState);
+    // Send a clean copy of the game state to clients
+    io.to(roomId).emit('update', getCleanGameState(roomId));
 }
 
-function startGame() {
-    gameState.isActive = true;
-    gameState.gameTimer = GAME_DURATION;
-    gameState.foodTimer = FOOD_DURATION;
-    gameState.rematchRequests = {}; // Clear any rematch requests
-    
-    clearInterval(gameLoop);
-    clearInterval(gameTimer);
-    clearInterval(foodTimer);
-    
-    gameLoop = setInterval(updateSnakePositions, UPDATE_INTERVAL);
-    
-    // Game timer
-    gameTimer = setInterval(() => {
-        gameState.gameTimer--;
-        if (gameState.gameTimer <= 0) {
-            endGame();
-        }
-        io.emit('update', gameState);
-    }, 1000);
-
-    // Food timer
-    foodTimer = setInterval(() => {
-        gameState.foodTimer--;
-        if (gameState.foodTimer <= 0) {
-            moveFood();
-        }
-        io.emit('update', gameState);
-    }, 1000);
+function clearRoomIntervals(roomId) {
+    if (gameIntervals[roomId]) {
+        if (gameIntervals[roomId].gameLoop) clearInterval(gameIntervals[roomId].gameLoop);
+        if (gameIntervals[roomId].timerInterval) clearInterval(gameIntervals[roomId].timerInterval);
+        if (gameIntervals[roomId].foodInterval) clearInterval(gameIntervals[roomId].foodInterval);
+        
+        // Reset the intervals object
+        gameIntervals[roomId] = {};
+    }
 }
 
-function endGame(winnerId = null) {
-    clearInterval(gameLoop);
-    clearInterval(gameTimer);
-    clearInterval(foodTimer);
-    gameState.isActive = false;
+function startGame(roomId) {
+    if (!gameRooms[roomId]) return;
+    
+    gameRooms[roomId].isActive = true;
+    gameRooms[roomId].gameTimer = GAME_DURATION;
+    gameRooms[roomId].foodTimer = FOOD_DURATION;
+    gameRooms[roomId].rematchRequests = {};
+    
+    // Clear any existing intervals
+    clearRoomIntervals(roomId);
+    
+    // Create new intervals
+    gameIntervals[roomId] = {
+        gameLoop: setInterval(() => updateSnakePositions(roomId), UPDATE_INTERVAL),
+        timerInterval: setInterval(() => {
+            if (!gameRooms[roomId]) {
+                clearRoomIntervals(roomId);
+                return;
+            }
+            
+            gameRooms[roomId].gameTimer--;
+            if (gameRooms[roomId].gameTimer <= 0) {
+                endGame(roomId);
+            }
+            
+            // Send a clean copy of the game state
+            io.to(roomId).emit('update', getCleanGameState(roomId));
+        }, 1000),
+        foodInterval: setInterval(() => {
+            if (!gameRooms[roomId]) {
+                clearRoomIntervals(roomId);
+                return;
+            }
+            
+            gameRooms[roomId].foodTimer--;
+            if (gameRooms[roomId].foodTimer <= 0) {
+                moveFood(roomId);
+            }
+            
+            // Send a clean copy of the game state
+            io.to(roomId).emit('update', getCleanGameState(roomId));
+        }, 1000)
+    };
+}
+
+function endGame(roomId, winnerId = null) {
+    if (!gameRooms[roomId]) return;
+    
+    // Clear intervals
+    clearRoomIntervals(roomId);
+    
+    gameRooms[roomId].isActive = false;
 
     // If no winner specified, determine by score
     if (!winnerId) {
         let highestScore = -1;
         let isTie = false;
 
-        Object.entries(gameState.players).forEach(([id, player]) => {
+        Object.entries(gameRooms[roomId].players).forEach(([id, player]) => {
             if (player.score > highestScore) {
                 highestScore = player.score;
                 winnerId = id;
@@ -142,43 +178,47 @@ function endGame(winnerId = null) {
             }
         });
 
-        io.emit('gameOver', { 
+        io.to(roomId).emit('gameOver', { 
             winnerId: winnerId,
             isTie: isTie,
             finalScores: Object.fromEntries(
-                Object.entries(gameState.players).map(([id, player]) => [id, player.score])
+                Object.entries(gameRooms[roomId].players).map(([id, player]) => [id, player.score])
             )
         });
     } else {
-        io.emit('gameOver', { 
+        io.to(roomId).emit('gameOver', { 
             winnerId: winnerId,
             isTie: false,
             finalScores: Object.fromEntries(
-                Object.entries(gameState.players).map(([id, player]) => [id, player.score])
+                Object.entries(gameRooms[roomId].players).map(([id, player]) => [id, player.score])
             )
         });
     }
 }
 
-function resetGame() {
-    // Reset game state
-    const playerIds = Object.keys(gameState.players);
+function resetGame(roomId) {
+    if (!gameRooms[roomId]) return null;
     
-    gameState = {
+    // Reset game state
+    const playerIds = Object.keys(gameRooms[roomId].players);
+    const created = gameRooms[roomId].created;
+    
+    // Completely recreate the game state
+    gameRooms[roomId] = {
         players: {},
         food: { x: 5, y: 5 },
         isActive: false,
         gameTimer: GAME_DURATION,
         foodTimer: FOOD_DURATION,
-        rematchRequests: {}
+        rematchRequests: {},
+        created: created
     };
     
     // Add players back with initial positions
     if (playerIds.length > 0) {
-        const isFirstPlayer = true;
         const startX = 10;
         
-        gameState.players[playerIds[0]] = {
+        gameRooms[roomId].players[playerIds[0]] = {
             score: 0,
             color: 'red',
             snake: [{ x: startX, y: 15 }, { x: startX - 1, y: 15 }],
@@ -187,7 +227,7 @@ function resetGame() {
         
         if (playerIds.length > 1) {
             const startX2 = 30;
-            gameState.players[playerIds[1]] = {
+            gameRooms[roomId].players[playerIds[1]] = {
                 score: 0,
                 color: 'blue',
                 snake: [{ x: startX2, y: 15 }, { x: startX2 + 1, y: 15 }],
@@ -196,39 +236,164 @@ function resetGame() {
         }
     }
     
-    return gameState;
+    return getCleanGameState(roomId);
 }
 
 // Handle Socket.IO connections
 io.on('connection', (socket) => {
-    console.log('Player connected:', socket.id);
+    console.log('Client connected:', socket.id);
+    
+    // Track the current room for this socket
+    socket.roomId = null;
 
-    const playerId = socket.id;
-    const isFirstPlayer = Object.keys(gameState.players).length === 0;
-    const startX = isFirstPlayer ? 10 : 30;
-
-    gameState.players[playerId] = {
-        score: 0,
-        color: isFirstPlayer ? 'red' : 'blue',
-        snake: [{ x: startX, y: 15 }, { x: startX - 1, y: 15 }],
-        direction: isFirstPlayer ? 'RIGHT' : 'LEFT'
-    };
-
-    socket.emit('initialize', { playerId, gameState });
-    socket.broadcast.emit('playerJoined', {
-        playerId: playerId,
-        player: gameState.players[playerId]
+    // Create a new game room
+    socket.on('createRoom', (data) => {
+        const roomId = data.roomCode;
+        
+        // Check if room already exists
+        if (gameRooms[roomId]) {
+            socket.emit('roomError', { message: 'Room already exists' });
+            return;
+        }
+        
+        // Create new room
+        gameRooms[roomId] = {
+            players: {},
+            food: { x: 5, y: 5 },
+            isActive: false,
+            gameTimer: GAME_DURATION,
+            foodTimer: FOOD_DURATION,
+            rematchRequests: {},
+            created: Date.now()
+        };
+        
+        // Initialize intervals storage
+        gameIntervals[roomId] = {};
+        
+        // Join the room
+        socket.join(roomId);
+        socket.roomId = roomId;
+        
+        // Add player to the room
+        const playerId = socket.id;
+        gameRooms[roomId].players[playerId] = {
+            score: 0,
+            color: 'red',
+            snake: [{ x: 10, y: 15 }, { x: 9, y: 15 }],
+            direction: 'RIGHT'
+        };
+        
+        socket.emit('roomCreated', { 
+            roomId: roomId,
+            playerId: playerId
+        });
+        
+        console.log(`Room created: ${roomId} by player ${playerId}`);
+    });
+    
+    // Join an existing game room
+    socket.on('joinRoom', (data) => {
+        const roomId = data.roomCode;
+        
+        // Check if room exists
+        if (!gameRooms[roomId]) {
+            socket.emit('roomError', { message: 'Room does not exist' });
+            return;
+        }
+        
+        // Check if room is full
+        if (Object.keys(gameRooms[roomId].players).length >= 2) {
+            socket.emit('roomError', { message: 'Room is full' });
+            return;
+        }
+        
+        // Join the room
+        socket.join(roomId);
+        socket.roomId = roomId;
+        
+        // Add player to the room
+        const playerId = socket.id;
+        gameRooms[roomId].players[playerId] = {
+            score: 0,
+            color: 'blue',
+            snake: [{ x: 30, y: 15 }, { x: 31, y: 15 }],
+            direction: 'LEFT'
+        };
+        
+        socket.emit('roomJoined', { 
+            roomId: roomId,
+            playerId: playerId
+        });
+        
+        // Notify the room creator
+        socket.to(roomId).emit('playerJoinedRoom', {
+            playerId: playerId
+        });
+        
+        console.log(`Player ${playerId} joined room ${roomId}`);
+    });
+    
+    // Handle game initialization for a specific room
+    socket.on('initializeGame', (data) => {
+        try {
+            const roomId = data.roomId;
+            
+            if (!gameRooms[roomId]) {
+                socket.emit('roomError', { message: 'Room does not exist' });
+                return;
+            }
+            
+            socket.roomId = roomId;
+            const playerId = socket.id;
+            
+            // Add player to the room if not already there (handles page refreshes)
+            if (!gameRooms[roomId].players[playerId]) {
+                const isFirstPlayer = Object.keys(gameRooms[roomId].players).length === 0;
+                const startX = isFirstPlayer ? 10 : 30;
+                
+                gameRooms[roomId].players[playerId] = {
+                    score: 0,
+                    color: isFirstPlayer ? 'red' : 'blue',
+                    snake: [{ x: startX, y: 15 }, { x: startX - 1, y: 15 }],
+                    direction: isFirstPlayer ? 'RIGHT' : 'LEFT'
+                };
+            }
+            
+            // Join the room (if not already in it)
+            socket.join(roomId);
+            
+            // Send the initial game state - clean copy without circular references
+            socket.emit('initialize', { 
+                playerId, 
+                gameState: getCleanGameState(roomId)
+            });
+            
+            // Notify other players
+            socket.to(roomId).emit('playerJoined', {
+                playerId: playerId,
+                player: gameRooms[roomId].players[playerId]
+            });
+            
+            // Start game if two players (and not already active)
+            if (Object.keys(gameRooms[roomId].players).length === 2 && !gameRooms[roomId].isActive) {
+                startGame(roomId);
+                io.to(roomId).emit('gameStarted');
+            }
+        } catch (error) {
+            console.error('Error initializing game:', error);
+            socket.emit('roomError', { message: 'Error initializing game' });
+        }
     });
 
-    // Start game if two players
-    if (Object.keys(gameState.players).length === 2) {
-        startGame();
-        io.emit('gameStarted');
-    }
-
+    // Handle player movement
     socket.on('move', (data) => {
-        const player = gameState.players[playerId];
-        if (!player || !gameState.isActive) return;
+        const roomId = socket.roomId;
+        if (!roomId || !gameRooms[roomId]) return;
+        
+        const playerId = socket.id;
+        const player = gameRooms[roomId].players[playerId];
+        
+        if (!player || !gameRooms[roomId].isActive) return;
 
         const opposites = {
             'LEFT': 'RIGHT',
@@ -237,30 +402,53 @@ io.on('connection', (socket) => {
             'DOWN': 'UP'
         };
 
+        // Only allow valid direction changes
         if (!player.direction || opposites[player.direction] !== data.direction) {
             player.direction = data.direction;
         }
     });
 
     socket.on('disconnect', () => {
-        console.log('Player disconnected:', socket.id);
-        delete gameState.players[socket.id];
-        delete gameState.rematchRequests[socket.id];
+        console.log('Client disconnected:', socket.id);
         
-        gameState.isActive = false;
-        clearInterval(gameLoop);
-        clearInterval(gameTimer);
-        clearInterval(foodTimer);
-        
-        io.emit('playerLeft', { playerId: socket.id });
+        // Handle player disconnection
+        const roomId = socket.roomId;
+        if (roomId && gameRooms[roomId]) {
+            // Remove player from the room
+            delete gameRooms[roomId].players[socket.id];
+            
+            // Remove rematch request if any
+            if (gameRooms[roomId].rematchRequests) {
+                delete gameRooms[roomId].rematchRequests[socket.id];
+            }
+            
+            // Stop the game
+            gameRooms[roomId].isActive = false;
+            clearRoomIntervals(roomId);
+            
+            // Notify remaining players
+            io.to(roomId).emit('playerLeft', { playerId: socket.id });
+            
+            // Remove the room if empty
+            if (Object.keys(gameRooms[roomId].players).length === 0) {
+                delete gameRooms[roomId];
+                delete gameIntervals[roomId];
+                console.log(`Room ${roomId} deleted (empty)`);
+            }
+        }
     });
 
     // Handle rematch request
     socket.on('requestRematch', () => {
+        const roomId = socket.roomId;
+        if (!roomId || !gameRooms[roomId]) return;
+        
         console.log('Rematch requested by:', socket.id);
         
+        const playerId = socket.id;
+        
         // Find the opponent
-        const opponentId = Object.keys(gameState.players).find(id => id !== playerId);
+        const opponentId = Object.keys(gameRooms[roomId].players).find(id => id !== playerId);
         if (!opponentId) {
             // No opponent found
             socket.emit('rematchFailed', { reason: 'No opponent found' });
@@ -268,7 +456,7 @@ io.on('connection', (socket) => {
         }
         
         // Set this player's rematch request
-        gameState.rematchRequests[playerId] = true;
+        gameRooms[roomId].rematchRequests[playerId] = true;
         
         // Send request to opponent
         socket.to(opponentId).emit('rematchRequested', { 
@@ -281,39 +469,47 @@ io.on('connection', (socket) => {
     
     // Handle rematch acceptance
     socket.on('acceptRematch', () => {
+        const roomId = socket.roomId;
+        if (!roomId || !gameRooms[roomId]) return;
+        
         console.log('Rematch accepted by:', socket.id);
         
-        // Find the requester (opponent)
-        const opponentId = Object.keys(gameState.players).find(id => id !== playerId);
+        const playerId = socket.id;
         
-        if (!opponentId || !gameState.rematchRequests[opponentId]) {
+        // Find the requester (opponent)
+        const opponentId = Object.keys(gameRooms[roomId].players).find(id => id !== playerId);
+        
+        if (!opponentId || !gameRooms[roomId].rematchRequests[opponentId]) {
             // Invalid rematch state
             socket.emit('rematchFailed', { reason: 'Invalid rematch state' });
             return;
         }
         
         // Both players have agreed to rematch
-        const resetGameState = resetGame();
+        const resetGameState = resetGame(roomId);
         
         // Clear intervals
-        clearInterval(gameLoop);
-        clearInterval(gameTimer);
-        clearInterval(foodTimer);
+        clearRoomIntervals(roomId);
         
         // Send reset event to both players
-        io.emit('gameRestarted', { gameState: resetGameState });
+        io.to(roomId).emit('gameRestarted', { gameState: resetGameState });
         
         // Start the game again
-        startGame();
-        io.emit('gameStarted');
+        startGame(roomId);
+        io.to(roomId).emit('gameStarted');
     });
     
     // Handle rematch decline
     socket.on('declineRematch', () => {
+        const roomId = socket.roomId;
+        if (!roomId || !gameRooms[roomId]) return;
+        
         console.log('Rematch declined by:', socket.id);
         
+        const playerId = socket.id;
+        
         // Find the requester (opponent)
-        const opponentId = Object.keys(gameState.players).find(id => id !== playerId);
+        const opponentId = Object.keys(gameRooms[roomId].players).find(id => id !== playerId);
         
         if (opponentId) {
             // Notify requester that rematch was declined
@@ -321,35 +517,56 @@ io.on('connection', (socket) => {
         }
         
         // Clear rematch requests
-        gameState.rematchRequests = {};
+        gameRooms[roomId].rematchRequests = {};
     });
 
     // Handle quit game
     socket.on('quit', () => {
-        clearInterval(gameLoop);
-        clearInterval(gameTimer);
-        clearInterval(foodTimer);
+        const roomId = socket.roomId;
+        if (!roomId || !gameRooms[roomId]) return;
         
-        gameState.isActive = false;
-        gameState.rematchRequests = {};
+        clearRoomIntervals(roomId);
+        
+        gameRooms[roomId].isActive = false;
+        gameRooms[roomId].rematchRequests = {};
         
         // Notify all players
-        io.emit('gameQuit');
+        io.to(roomId).emit('gameQuit');
     });
     
     // Handle restart (legacy - keeping for backward compatibility)
     socket.on('restart', () => {
-        const isFirstPlayer = Object.keys(gameState.players).length === 0;
-        const startX = isFirstPlayer ? 10 : 30;
+        const roomId = socket.roomId;
+        if (!roomId || !gameRooms[roomId]) return;
         
-        resetGame();
+        const playerId = socket.id;
         
-        socket.emit('initialize', { playerId, gameState });
+        resetGame(roomId);
+        
+        socket.emit('initialize', { 
+            playerId, 
+            gameState: getCleanGameState(roomId)
+        });
     });
 });
 
+// Clean up inactive rooms periodically (every 30 minutes)
+setInterval(() => {
+    const now = Date.now();
+    const inactiveThreshold = 30 * 60 * 1000; // 30 minutes
+    
+    Object.keys(gameRooms).forEach(roomId => {
+        if (now - gameRooms[roomId].created > inactiveThreshold && !gameRooms[roomId].isActive) {
+            clearRoomIntervals(roomId);
+            delete gameRooms[roomId];
+            delete gameIntervals[roomId];
+            console.log(`Room ${roomId} deleted (inactive)`);
+        }
+    });
+}, 30 * 60 * 1000);
+
 // Start the server
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
