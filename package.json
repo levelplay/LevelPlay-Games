@@ -24,7 +24,10 @@
     "test": "mocha"
   },
   "dependencies": {
-    "is-number": "^7.0.0"
+    "express": "^5.1.0",
+    "is-number": "^7.0.0",
+    "uuid": "^11.1.0",
+    "ws": "^8.18.2"
   },
   "devDependencies": {
     "fill-range": "^6.0.0",

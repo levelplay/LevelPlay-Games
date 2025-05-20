@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Stack Game - Multiplayer</title>
+    <style>
+        body {
+            background: #1d1d1d;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+        }
+        
+        canvas {
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            display: block;
+            margin: 0 auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        }
+        
+        #gameCanvas {
+            cursor: pointer;
+        }
+        
+        #lobby {
+            text-align: center;
+            margin-bottom: 20px;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 30px 40px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            max-width: 500px;
+            width: 90%;
+            box-sizing: border-box;
+        }
+        
+        #controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        
+        button {
+            background: #4CAF50;
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+            font-weight: 600;
+            width: auto;
+            max-width: 100%;
+            white-space: normal;
+            word-wrap: break-word;
+        }
+        
+        button:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        button.secondary {
+            background: #3498db;
+        }
+        
+        button.secondary:hover {
+            background: #2980b9;
+        }
+        
+        button.danger {
+            background: #e74c3c;
+        }
+        
+        button.danger:hover {
+            background: #c0392b;
+        }
+
+        button:disabled {
+            background: #7f8c8d;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        input {
+            padding: 12px;
+            font-size: 16px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-right: 10px;
+            background: rgba(0, 0, 0, 0.4);
+            color: white;
+            width: 100%;
+            max-width: 300px;
+            margin-bottom: 15px;
+        }
+        
+        input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        #messages {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 20px;
+            width: 800px;
+            max-height: 150px;
+            overflow-y: auto;
+            font-size: 14px;
+            line-height: 1.4;
+            display: none;
+        }
+        
+        #messages div {
+            margin-bottom: 5px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        h2 {
+            margin-top: 0;
+            background: linear-gradient(135deg, #4CAF50, #3498db);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 28px;
+        }
+        
+        /* Modal Styles */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .modal-content {
+            background: #222;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        .modal h3 {
+            margin-top: 0;
+            font-size: 22px;
+            color: #fff;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .modal-buttons button {
+            flex: 1 1 auto;
+            min-width: 120px;
+        }
+        
+        /* Game ID display */
+        .game-id-display {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 18px;
+            letter-spacing: 1px;
+            margin: 10px auto;
+            display: inline-block;
+        }
+        
+        /* Copy button */
+        .copy-button {
+            background: #7f8c8d;
+            padding: 5px 10px;
+            font-size: 14px;
+            margin-left: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .copy-button:hover {
+            background: #95a5a6;
+        }
+        
+        /* Status indicators */
+        .status-box {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            background: rgba(52, 152, 219, 0.2);
+            border-left: 4px solid #3498db;
+        }
+        
+        /* Turn indicator */
+        .turn-indicator {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 8px 16px;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 20px;
+            font-weight: bold;
+        }
+        
+        /* Score display */
+        .score-display {
+            position: absolute;
+            top: 10px;
+            display: flex;
+            justify-content: space-between;
+            width: 780px;
+            padding: 8px 10px;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        /* Loading spinner for waiting modal */
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid #3498db;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Timer for rematch request */
+        .timer {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #bdc3c7;
+        }
+
+        /* Connection status indicator */
+        .connection-status {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            background-color: rgba(0, 0, 0, 0.7);
+        }
+
+        .status-connected {
+            color: #2ecc71;
+        }
+
+        .status-disconnected {
+            color: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+    <div id="lobby">
+        <h2>Stack Game - Multiplayer</h2>
+        <div id="joinForm">
+            <div id="createGame">
+                <button id="createButton" style="width: 100%; max-width: 300px;">Create New Game</button>
+            </div>
+            <div id="joinGame" class="hidden">
+                <input type="text" id="gameId" placeholder="Enter Game Code">
+                <button id="joinButton">Join Game</button>
+            </div>
+            <button id="toggleJoin" class="secondary" style="margin-top: 15px;">Join Existing Game</button>
+        </div>
+        <div id="waitingRoom" class="hidden">
+            <h3>Game Code:</h3>
+            <div class="game-id-display">
+                <span id="roomDisplay"></span>
+                <span class="copy-button" id="copyButton">Copy</span>
+            </div>
+            <p>Share this code with your friend to play together</p>
+            <div class="status-box">
+                <p id="playerStatus">Waiting for another player to join...</p>
+            </div>
+            <button id="startButton" class="hidden">Start Game</button>
+        </div>
+    </div>
+    
+    <div id="gameContainer" class="hidden" style="position: relative;">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div class="score-display hidden" id="scoreDisplay">
+            <span id="player1Score">Player 1: 0</span>
+            <span id="player2Score">Player 2: 0</span>
+        </div>
+    </div>
+    
+    <div id="messages" class="hidden">
+        <!-- Messages will be displayed here, but we're hiding it -->
+    </div>
+    
+    <div id="controls" class="hidden">
+        <button id="resetButton" class="hidden">Restart Game</button>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div id="gameOverModal" class="modal hidden">
+        <div class="modal-content">
+            <h3 id="winnerText">Player Wins!</h3>
+            <p>Would you like to play again?</p>
+            <div class="modal-buttons">
+                <button id="rematchButton" class="secondary">Rematch</button>
+                <button id="quitButton" class="danger">Quit</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Rematch Request Modal -->
+    <div id="rematchRequestModal" class="modal hidden">
+        <div class="modal-content">
+            <h3>Rematch Request</h3>
+            <p>Your opponent wants to play again. Accept?</p>
+            <div class="timer">Time remaining: <span id="rematchTimer">30</span> seconds</div>
+            <div class="modal-buttons">
+                <button id="acceptRematchButton">Accept</button>
+                <button id="declineRematchButton" class="danger">Decline</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Waiting for Response Modal -->
+    <div id="waitingModal" class="modal hidden">
+        <div class="modal-content">
+            <h3>Waiting for Response</h3>
+            <p>Waiting for opponent to respond to your rematch request...</p>
+            <div class="spinner"></div>
+            <div class="timer">Time remaining: <span id="waitingTimer">30</span> seconds</div>
+        </div>
+    </div>
+
+    <!-- Connection Status Indicator -->
+    <div id="connectionStatus" class="connection-status">
+        <span id="statusText" class="status-disconnected">Disconnected</span>
+    </div>
+
+    <!-- Direct fix for the toggle join button -->
+    <script>
+      // Immediately execute to fix the toggle button
+      (function() {
+        // Get the toggle button
+        var toggleJoinBtn = document.getElementById('toggleJoin');
+        var createGameDiv = document.getElementById('createGame');
+        var joinGameDiv = document.getElementById('joinGame');
+        
+        if (toggleJoinBtn && createGameDiv && joinGameDiv) {
+          // Direct event handler for toggle button
+          toggleJoinBtn.onclick = function() {
+            if (createGameDiv.classList.contains('hidden')) {
+              createGameDiv.classList.remove('hidden');
+              joinGameDiv.classList.add('hidden');
+              toggleJoinBtn.textContent = "Join Existing Game";
+              toggleJoinBtn.className = "secondary";
+            } else {
+              createGameDiv.classList.add('hidden');
+              joinGameDiv.classList.remove('hidden');
+              toggleJoinBtn.textContent = "Create New Game";
+              toggleJoinBtn.className = "danger";
+            }
+          };
+
+          // Fix the Join button too
+          var joinButton = document.getElementById('joinButton');
+          if (joinButton) {
+            joinButton.onclick = function() {
+              var gameIdInput = document.getElementById('gameId');
+              var gameRoomId = gameIdInput ? gameIdInput.value.trim().toUpperCase() : "";
+              
+              if (!gameRoomId) {
+                alert("Please enter the Game Code");
+                return;
+              }
+              
+              document.getElementById('joinForm').classList.add('hidden');
+              document.getElementById('waitingRoom').classList.remove('hidden');
+              document.getElementById('playerStatus').textContent = "Connecting to game...";
+              
+              // Let the game.js handle the rest
+              if (typeof setupSocket === 'function') {
+                if (typeof socket !== 'undefined' && socket) {
+                  try { socket.close(); } catch(e) {}
+                }
+                setupSocket();
+                
+                // Wait for socket connection
+                var waitInterval = setInterval(function() {
+                  if (typeof socket !== 'undefined' && socket && socket.readyState === WebSocket.OPEN) {
+                    clearInterval(waitInterval);
+                    
+                    // Send join request
+                    if (typeof sendMessage === 'function') {
+                      sendMessage({
+                        type: 'join',
+                        roomId: gameRoomId
+                      });
+                    } else {
+                      socket.send(JSON.stringify({
+                        type: 'join',
+                        roomId: gameRoomId
+                      }));
+                    }
+                  }
+                }, 100);
+              }
+            };
+          }
+
+          // Fix the Create button too
+          var createButton = document.getElementById('createButton');
+          if (createButton) {
+            createButton.onclick = function() {
+              document.getElementById('joinForm').classList.add('hidden');
+              document.getElementById('waitingRoom').classList.remove('hidden');
+              document.getElementById('playerStatus').textContent = "Creating game...";
+              
+              // Let the game.js handle the rest
+              if (typeof setupSocket === 'function') {
+                if (typeof socket !== 'undefined' && socket) {
+                  try { socket.close(); } catch(e) {}
+                }
+                setupSocket();
+                
+                // Wait for socket connection
+                var waitInterval = setInterval(function() {
+                  if (typeof socket !== 'undefined' && socket && socket.readyState === WebSocket.OPEN) {
+                    clearInterval(waitInterval);
+                    
+                    // Send create request
+                    if (typeof sendMessage === 'function') {
+                      sendMessage({
+                        type: 'create'
+                      });
+                    } else {
+                      socket.send(JSON.stringify({
+                        type: 'create'
+                      }));
+                    }
+                  }
+                }, 100);
+              }
+            };
+          }
+        }
+      })();
+    </script>
+
+    <!-- Include game.js as the last script -->
+    <script src="game.js"></script>
+</body>
+</html>
