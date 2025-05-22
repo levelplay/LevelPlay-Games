@@ -1,15 +1,513 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import fs from 'fs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 const server = createServer(app);
 const io = new Server(server);
 
-// Serve static files from the "public" folder
+// Custom middleware to serve different content based on room parameter
+app.get('/', (req, res) => {
+    const roomId = req.query.room;
+    
+    if (roomId) {
+        // Serve game page when room parameter is present
+        const gameHtml = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Glow Snake Multiplayer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Arial', sans-serif;
+            background-color: #1a1a1a;
+            box-sizing: border-box;
+            overflow-x: hidden;
+        }
+        
+        .game-wrapper {
+            position: relative;
+            width: 95%;
+            max-width: 800px;
+            text-align: center;
+            padding: 5px;
+            box-sizing: border-box;
+            margin: 0;
+        }
+
+        #phaser-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            aspect-ratio: 4/3;
+            margin: 0 auto;
+            background-color: #2d2d2d;
+            border: 4px solid #555;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+            overflow: hidden;
+        }
+
+        canvas {
+            width: 100% !important;
+            height: 100% !important;
+            display: block !important;
+        }
+
+        .scoreboard {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #333;
+            border-radius: 8px;
+            color: white;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+
+        .profile {
+            padding: 8px 15px;
+            border-radius: 6px;
+            font-size: clamp(14px, 3vw, 20px);
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+            margin: 5px;
+        }
+
+        .profile.left {
+            background-color: rgba(255, 0, 0, 0.25);
+            border: 2px solid #ff3333;
+        }
+
+        .profile.right {
+            background-color: rgba(0, 0, 255, 0.25);
+            border: 2px solid #3333ff;
+        }
+
+        .waiting-message {
+            color: white;
+            font-size: clamp(16px, 4vw, 24px);
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: block;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            z-index: 50;
+            width: 80%;
+            max-width: 320px;
+            text-align: center;
+        }
+
+        .timers {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            color: white;
+            font-size: clamp(16px, 3vw, 24px);
+            font-weight: bold;
+            z-index: 100;
+            text-shadow: 0 0 5px rgba(0, 0, 0, 0.7);
+        }
+
+        .main-timer {
+            margin-bottom: 5px;
+            transition: color 0.3s ease;
+        }
+
+        .food-timer {
+            font-size: clamp(14px, 2.5vw, 18px);
+            color: #ffff00;
+            transition: color 0.3s ease;
+        }
+
+        .shake {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        .timer-warning {
+            color: #ff5555;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translateX(-1px); }
+            20%, 80% { transform: translateX(2px); }
+            30%, 50%, 70% { transform: translateX(-4px); }
+            40%, 60% { transform: translateX(4px); }
+        }
+
+        .controls-container {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            justify-content: center;
+            z-index: 100;
+            width: 200px;
+            height: 200px;
+        }
+
+        .player-controls {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .control-btn {
+            position: absolute !important;
+            width: 60px !important;
+            height: 60px !important;
+            border-radius: 50% !important;
+            border: 2px solid rgba(255, 255, 255, 0.7) !important;
+            background-color: rgba(50, 50, 50, 0.6) !important;
+            color: white !important;
+            cursor: pointer !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            font-size: 24px !important;
+            transition: all 0.2s !important;
+            touch-action: manipulation !important;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.4) !important;
+            -webkit-tap-highlight-color: transparent !important;
+            user-select: none !important;
+            -webkit-user-select: none !important;
+        }
+
+        .control-btn:active, .control-btn.active {
+            background-color: rgba(0, 255, 0, 0.6) !important;
+        }
+
+        .up { 
+            top: 0 !important; 
+            left: 50% !important; 
+            transform: translateX(-50%) !important; 
+        }
+        
+        .down { 
+            bottom: 0 !important; 
+            left: 50% !important; 
+            transform: translateX(-50%) !important; 
+        }
+        
+        .left { 
+            top: 50% !important; 
+            left: 0 !important; 
+            transform: translateY(-50%) !important; 
+        }
+        
+        .right { 
+            top: 50% !important; 
+            right: 0 !important; 
+            transform: translateY(-50%) !important; 
+        }
+
+        .game-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.3);
+            display: none;
+            z-index: 90;
+            pointer-events: auto;
+        }
+        
+        .result-popup {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(20, 20, 20, 0.85);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+            color: white;
+            width: 85%;
+            max-width: 320px;
+            z-index: 1000;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+            border: 2px solid rgba(0, 255, 0, 0.3);
+        }
+
+        .result-popup h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: clamp(18px, 4vw, 28px);
+            color: white;
+            text-shadow: 0 0 8px rgba(0, 255, 0, 0.5);
+        }
+
+        .score-line {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: clamp(14px, 3vw, 18px);
+        }
+        
+        .score-line.you {
+            font-weight: bold;
+            color: #55ff55;
+        }
+
+        .popup-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+        
+        .play-again-btn {
+            padding: 10px 0;
+            width: 48%;
+            font-size: clamp(14px, 3vw, 18px);
+            background: linear-gradient(45deg, #33cc33, #27ae60);
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .quit-btn {
+            padding: 10px 0;
+            width: 48%;
+            font-size: clamp(14px, 3vw, 18px);
+            background: linear-gradient(45deg, #ff3333, #c0392b);
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .play-again-btn:hover, .quit-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+        
+        .rematch-popup {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(20, 20, 20, 0.85);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+            color: white;
+            width: 85%;
+            max-width: 350px;
+            z-index: 1000;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+            border: 2px solid rgba(0, 255, 0, 0.3);
+        }
+        
+        .rematch-popup h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: clamp(18px, 4vw, 24px);
+            color: white;
+            text-shadow: 0 0 8px rgba(0, 255, 0, 0.5);
+        }
+        
+        .rematch-popup p {
+            margin-bottom: 20px;
+            font-size: clamp(14px, 3vw, 18px);
+        }
+        
+        .rematch-buttons {
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .accept-btn {
+            padding: 10px 0;
+            width: 48%;
+            font-size: clamp(14px, 3vw, 18px);
+            background: linear-gradient(45deg, #33cc33, #27ae60);
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .decline-btn {
+            padding: 10px 0;
+            width: 48%;
+            font-size: clamp(14px, 3vw, 18px);
+            background: linear-gradient(45deg, #ff3333, #c0392b);
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .accept-btn:hover, .decline-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+        
+        .rematch-status {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(20, 20, 20, 0.85);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+            color: white;
+            width: 85%;
+            max-width: 300px;
+            z-index: 1000;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+            border: 2px solid rgba(0, 255, 0, 0.3);
+        }
+
+        @media (max-width: 768px) {
+            .game-wrapper {
+                padding: 5px;
+                margin: 0;
+                width: 98%;
+            }
+            
+            .scoreboard {
+                padding: 8px;
+                margin-bottom: 8px;
+            }
+            
+            #phaser-container {
+                aspect-ratio: 4/3;
+                max-width: 100%;
+            }
+            
+            body {
+                padding: 0;
+                margin: 0;
+            }
+            
+            .controls-container {
+                bottom: 20px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .timers {
+                top: 5px;
+                font-size: clamp(14px, 3vw, 20px);
+            }
+        }
+
+        * { 
+            touch-action: manipulation;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-wrapper">
+        <div class="scoreboard">
+            <div class="profile left" id="profileLeft">Waiting for Player 1</div>
+            <div class="profile right" id="profileRight">Waiting for Player 2</div>
+        </div>
+        
+        <div id="phaser-container">
+            <div class="timers">
+                <div id="mainTimer" class="main-timer">Time: 60</div>
+                <div id="foodTimer" class="food-timer">Food: 10</div>
+            </div>
+            <div class="waiting-message" id="waitingMessage">
+                Waiting for another player to join...
+            </div>
+            
+            <div class="controls-container">
+                <div class="player-controls">
+                    <button class="control-btn up" id="upButton" data-direction="UP">↑</button>
+                    <button class="control-btn left" id="leftButton" data-direction="LEFT">←</button>
+                    <button class="control-btn right" id="rightButton" data-direction="RIGHT">→</button>
+                    <button class="control-btn down" id="downButton" data-direction="DOWN">↓</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="game-overlay" id="gameOverlay"></div>
+        
+        <div class="result-popup" id="resultPopup">
+            <h2 id="resultTitle">Game Over!</h2>
+            <div id="scoreDisplay">
+                <div class="score-line you">
+                    <span>You:</span>
+                    <span id="yourScore">0</span>
+                </div>
+                <div class="score-line">
+                    <span>Opponent:</span>
+                    <span id="opponentScore">0</span>
+                </div>
+            </div>
+            <div class="popup-buttons">
+                <button class="play-again-btn" onclick="handleRematch()">Play Again</button>
+                <button class="quit-btn" onclick="handleQuit()">Quit</button>
+            </div>
+        </div>
+        
+        <div class="rematch-popup" id="rematchPopup">
+            <h2>Rematch Request</h2>
+            <p>Your opponent wants to play again. Do you accept?</p>
+            <div class="rematch-buttons">
+                <button class="accept-btn" onclick="acceptRematch()">Accept</button>
+                <button class="decline-btn" onclick="declineRematch()">Decline</button>
+            </div>
+        </div>
+        
+        <div class="rematch-status" id="rematchStatus">
+            <h2 id="rematchStatusTitle">Waiting for response...</h2>
+            <p id="rematchStatusMessage">Your rematch request has been sent.</p>
+        </div>
+    </div>
+
+    <script src="/game.js"></script>
+</body>
+</html>`;
+        
+        res.send(gameHtml);
+    } else {
+        // Serve lobby page when no room parameter
+        const indexPath = join(__dirname, 'public', 'index.html');
+        res.sendFile(indexPath);
+    }
+});
+
+// Serve static files from the "public" folder for other requests
 app.use(express.static('public'));
 
-// Game constants
+// Game constants and rest of your server code remains the same...
 const GRID_WIDTH = 40;
 const GRID_HEIGHT = 30;
 const UPDATE_INTERVAL = 100;
@@ -239,7 +737,7 @@ function resetGame(roomId) {
     return getCleanGameState(roomId);
 }
 
-// Handle Socket.IO connections
+// Handle Socket.IO connections - rest of your socket code remains exactly the same
 io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
     
