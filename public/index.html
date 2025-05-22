@@ -148,6 +148,19 @@
             font-weight: bold;
             display: none;
         }
+
+        .debug-info {
+            background-color: #111;
+            color: #0f0;
+            padding: 10px;
+            margin: 20px 0;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            text-align: left;
+            max-height: 200px;
+            overflow-y: auto;
+        }
         
         @keyframes pulse {
             0% { box-shadow: 0 0 15px rgba(0, 255, 0, 0.4); }
@@ -203,10 +216,26 @@
             <div id="joinError" class="error-message">Invalid room code. Please try again.</div>
             <button id="joinGameButton" class="action-button">Join Game</button>
         </div>
+
+        <!-- Debug Info -->
+        <div class="debug-info" id="debugInfo">
+            Debug Info:<br>
+            Socket Status: <span id="socketStatus">Disconnected</span><br>
+            <div id="debugLog"></div>
+        </div>
     </div>
     
     <script>
+        // Debug logging
+        function debugLog(message) {
+            console.log(message);
+            const debugLogDiv = document.getElementById('debugLog');
+            debugLogDiv.innerHTML += new Date().toLocaleTimeString() + ': ' + message + '<br>';
+            debugLogDiv.scrollTop = debugLogDiv.scrollHeight;
+        }
+
         // Connect to Socket.io server
+        debugLog('Attempting to connect to socket...');
         const socket = io();
         let roomCode = null;
         
@@ -221,105 +250,141 @@
         const joinGameButton = document.getElementById('joinGameButton');
         const startGameButton = document.getElementById('startGameButton');
         const joinError = document.getElementById('joinError');
-        
-        // Debug flag
-        const DEBUG = true;
-        
-        function debugLog(...args) {
-            if (DEBUG) {
-                console.log(...args);
-            }
+        const socketStatus = document.getElementById('socketStatus');
+
+        // Check if UUID is available
+        if (typeof uuid === 'undefined') {
+            debugLog('ERROR: UUID library not loaded!');
+        } else {
+            debugLog('UUID library loaded successfully');
         }
         
         // Show create game form
         createButton.addEventListener('click', () => {
+            debugLog('Create button clicked');
             createForm.style.display = 'flex';
             joinForm.style.display = 'none';
             
             // Generate a room code (using first 8 chars of UUID v4)
-            roomCode = uuid.v4().substring(0, 8);
-            gameCodeElement.textContent = roomCode;
-            
-            // Create a room on the server
-            socket.emit('createRoom', { roomCode });
-            
-            debugLog('Created room:', roomCode);
+            try {
+                roomCode = uuid.v4().substring(0, 8);
+                gameCodeElement.textContent = roomCode;
+                debugLog('Generated room code: ' + roomCode);
+                
+                // Create a room on the server
+                socket.emit('createRoom', { roomCode });
+                debugLog('Sent createRoom event to server');
+            } catch (error) {
+                debugLog('ERROR generating room code: ' + error.message);
+            }
         });
         
         // Show join game form
         joinButton.addEventListener('click', () => {
+            debugLog('Join button clicked');
             joinForm.style.display = 'flex';
             createForm.style.display = 'none';
         });
         
         // Copy room code
         copyButton.addEventListener('click', () => {
+            debugLog('Copy button clicked');
             navigator.clipboard.writeText(roomCode).then(() => {
                 copyButton.textContent = 'Copied!';
+                debugLog('Room code copied to clipboard');
                 setTimeout(() => {
                     copyButton.textContent = 'Copy Code';
                 }, 2000);
+            }).catch(err => {
+                debugLog('ERROR copying to clipboard: ' + err.message);
             });
         });
         
         // Join a game
         joinGameButton.addEventListener('click', () => {
             const code = roomCodeInput.value.trim();
+            debugLog('Join game button clicked with code: ' + code);
             
             if (code.length < 1) {
                 joinError.textContent = 'Please enter a room code.';
                 joinError.style.display = 'block';
+                debugLog('ERROR: Empty room code');
                 return;
             }
             
             roomCode = code;
             socket.emit('joinRoom', { roomCode });
-            
-            debugLog('Attempting to join room:', roomCode);
+            debugLog('Sent joinRoom event to server with code: ' + roomCode);
         });
         
         // Start game button (after creating a room)
         startGameButton.addEventListener('click', () => {
+            debugLog('Start game button clicked with room code: ' + roomCode);
             if (roomCode) {
-                window.location.href = '/game.html?room=' + roomCode;
+                const gameUrl = '/?room=' + roomCode;
+                debugLog('Redirecting to: ' + gameUrl);
+                window.location.href = gameUrl;
+            } else {
+                debugLog('ERROR: No room code available');
             }
         });
         
         // Socket events
         socket.on('connect', () => {
-            debugLog('Connected to server with ID:', socket.id);
+            debugLog('Connected to server with ID: ' + socket.id);
+            socketStatus.textContent = 'Connected (' + socket.id + ')';
+        });
+
+        socket.on('disconnect', () => {
+            debugLog('Disconnected from server');
+            socketStatus.textContent = 'Disconnected';
+        });
+
+        socket.on('connect_error', (error) => {
+            debugLog('Connection error: ' + error.message);
+            socketStatus.textContent = 'Connection Error';
         });
         
         // Room created successfully
         socket.on('roomCreated', (data) => {
-            debugLog('Room created successfully:', data);
+            debugLog('Room created successfully: ' + JSON.stringify(data));
         });
         
         // When someone joins the room
         socket.on('playerJoinedRoom', (data) => {
-            debugLog('Player joined room:', data);
+            debugLog('Player joined room: ' + JSON.stringify(data));
             
             // If we're the host, we can now start the game
             if (createForm.style.display === 'flex') {
                 startGameButton.classList.add('pulse');
                 document.querySelector('#createForm .status-message').textContent = 'Opponent joined! Ready to start the game.';
+                debugLog('Opponent joined, ready to start game');
             }
         });
         
         // Room join response
         socket.on('roomJoined', (data) => {
-            debugLog('Successfully joined room:', data);
+            debugLog('Successfully joined room: ' + JSON.stringify(data));
             
             // Redirect to game page
-            window.location.href = '/game.html?room=' + roomCode;
+            const gameUrl = '/?room=' + roomCode;
+            debugLog('Redirecting to game: ' + gameUrl);
+            window.location.href = gameUrl;
         });
         
         // Room join error
         socket.on('roomError', (data) => {
-            debugLog('Room error:', data);
+            debugLog('Room error: ' + JSON.stringify(data));
             joinError.textContent = data.message;
             joinError.style.display = 'block';
         });
+
+        // Log all socket events for debugging
+        socket.onAny((eventName, ...args) => {
+            debugLog('Socket event received: ' + eventName + ' with data: ' + JSON.stringify(args));
+        });
+
+        debugLog('Lobby script loaded successfully');
     </script>
 </body>
 </html> 
