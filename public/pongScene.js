@@ -5,6 +5,10 @@ class PongScene extends Phaser.Scene {
         this.winningScore = 10;
         this.gameOver = false;
         this.rematchRequested = false;
+        
+        // Mobile controls state
+        this.mobileUpPressed = false;
+        this.mobileDownPressed = false;
     }
 
     init() {
@@ -82,8 +86,82 @@ class PongScene extends Phaser.Scene {
         this.wKey = this.input.keyboard.addKey('W');
         this.sKey = this.input.keyboard.addKey('S');
 
+        // Setup mobile controls
+        this.setupMobileControls();
+
         this.setupSocketListeners();
         this.setupMenuHandlers();
+    }
+
+    setupMobileControls() {
+        const upBtn = document.getElementById('mobile-up');
+        const downBtn = document.getElementById('mobile-down');
+
+        if (upBtn && downBtn) {
+            // UP button events
+            upBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                this.mobileUpPressed = true;
+            }, { passive: false });
+
+            upBtn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                this.mobileUpPressed = false;
+            }, { passive: false });
+
+            upBtn.addEventListener('touchcancel', (e) => {
+                e.preventDefault();
+                this.mobileUpPressed = false;
+            }, { passive: false });
+
+            // Mouse events for desktop testing
+            upBtn.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                this.mobileUpPressed = true;
+            });
+
+            upBtn.addEventListener('mouseup', (e) => {
+                e.preventDefault();
+                this.mobileUpPressed = false;
+            });
+
+            upBtn.addEventListener('mouseleave', (e) => {
+                e.preventDefault();
+                this.mobileUpPressed = false;
+            });
+
+            // DOWN button events
+            downBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                this.mobileDownPressed = true;
+            }, { passive: false });
+
+            downBtn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                this.mobileDownPressed = false;
+            }, { passive: false });
+
+            downBtn.addEventListener('touchcancel', (e) => {
+                e.preventDefault();
+                this.mobileDownPressed = false;
+            }, { passive: false });
+
+            // Mouse events for desktop testing
+            downBtn.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                this.mobileDownPressed = true;
+            });
+
+            downBtn.addEventListener('mouseup', (e) => {
+                e.preventDefault();
+                this.mobileDownPressed = false;
+            });
+
+            downBtn.addEventListener('mouseleave', (e) => {
+                e.preventDefault();
+                this.mobileDownPressed = false;
+            });
+        }
     }
 
     // Create end game popup
@@ -783,19 +861,19 @@ class PongScene extends Phaser.Scene {
         if (!this.ready || this.gameOver) return;
 
         try {
-            // Handle paddle movement
+            // Handle paddle movement - check both keyboard and mobile inputs
             if (this.side === 'left') {
-                if ((this.wKey && this.wKey.isDown) || (this.cursors && this.cursors.up.isDown)) {
+                if ((this.wKey && this.wKey.isDown) || (this.cursors && this.cursors.up.isDown) || this.mobileUpPressed) {
                     this.socket.emit('paddleMove', { direction: 'up' });
                 }
-                if ((this.sKey && this.sKey.isDown) || (this.cursors && this.cursors.down.isDown)) {
+                if ((this.sKey && this.sKey.isDown) || (this.cursors && this.cursors.down.isDown) || this.mobileDownPressed) {
                     this.socket.emit('paddleMove', { direction: 'down' });
                 }
             } else if (this.side === 'right') {
-                if ((this.wKey && this.wKey.isDown) || (this.cursors && this.cursors.up.isDown)) {
+                if ((this.wKey && this.wKey.isDown) || (this.cursors && this.cursors.up.isDown) || this.mobileUpPressed) {
                     this.socket.emit('paddleMove', { direction: 'up' });
                 }
-                if ((this.sKey && this.sKey.isDown) || (this.cursors && this.cursors.down.isDown)) {
+                if ((this.sKey && this.sKey.isDown) || (this.cursors && this.cursors.down.isDown) || this.mobileDownPressed) {
                     this.socket.emit('paddleMove', { direction: 'down' });
                 }
             }
