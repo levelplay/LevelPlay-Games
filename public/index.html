@@ -2,11 +2,16 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Glow Snake Multiplayer - Rooms</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Glow Snake Multiplayer</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/uuid/8.3.2/uuid.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
     <style>
+        * {
+            box-sizing: border-box;
+        }
+        
         body {
             margin: 0;
             padding: 0;
@@ -17,58 +22,93 @@
             min-height: 100vh;
             font-family: 'Arial', sans-serif;
             background-color: #1a1a1a;
-            box-sizing: border-box;
             overflow-x: hidden;
             color: white;
+            font-size: clamp(14px, 2vw, 18px);
+        }
+        
+        /* LOBBY STYLES - responsive sizing only */
+        .lobby-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            height: 100vh;
+            width: 100vw;
+            padding: 0;
+            box-sizing: border-box;
+            overflow: hidden;
         }
         
         .container {
-            width: 90%;
-            max-width: 600px;
+            width: clamp(320px, 95vw, 480px);
             text-align: center;
-            padding: 20px;
-            box-sizing: border-box;
+            padding: clamp(12px, 2vw, 24px);
             background-color: #252525;
             border-radius: 16px;
             border: 4px solid #555;
             box-shadow: 0 0 30px rgba(0, 255, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            height: auto;
+            max-height: none;
+            overflow-y: auto;
         }
         
         h1 {
-            font-size: clamp(28px, 5vw, 48px);
-            margin-bottom: 20px;
+            font-size: clamp(28px, 8vw, 48px);
+            margin-bottom: 10px;
             color: #33ff33;
             text-shadow: 0 0 15px rgba(0, 255, 0, 0.7);
         }
         
         p {
-            font-size: clamp(16px, 3vw, 20px);
-            margin-bottom: 30px;
-            line-height: 1.6;
+            font-size: clamp(16px, 4vw, 20px);
+            margin-bottom: 15px;
+            line-height: 1.4;
         }
         
         .button-container {
             display: flex;
-            justify-content: space-around;
+            justify-content: center;
             margin-bottom: 40px;
+            gap: clamp(15px, 4vw, 25px);
+            flex-wrap: wrap;
         }
         
         .big-button {
-            padding: 15px 25px;
-            width: 40%;
-            font-size: clamp(16px, 3vw, 22px);
+            padding: clamp(15px, 4vw, 20px) clamp(25px, 6vw, 35px);
+            min-width: clamp(140px, 35vw, 180px);
+            font-size: clamp(16px, 4vw, 22px);
             background: linear-gradient(45deg, #33cc33, #27ae60);
             border: none;
-            border-radius: 10px;
+            border-radius: 12px;
             color: white;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all 0.3s ease;
             box-shadow: 0 0 15px rgba(0, 255, 0, 0.4);
+            min-height: clamp(55px, 10vh, 75px);
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
         
-        .big-button:hover {
-            transform: scale(1.05);
-            box-shadow: 0 0 25px rgba(0, 255, 0, 0.6);
+        .big-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 255, 0, 0.6);
+        }
+        
+        .big-button:active {
+            transform: translateY(0);
+        }
+        
+        .big-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
         }
         
         .form-container {
@@ -81,64 +121,92 @@
         input {
             width: 100%;
             max-width: 300px;
-            padding: 12px;
+            padding: clamp(12px, 3vw, 18px);
             margin-bottom: 20px;
-            font-size: 18px;
+            font-size: clamp(16px, 4vw, 20px);
             border: 2px solid #33cc33;
             background-color: #333;
             color: white;
-            border-radius: 8px;
+            border-radius: 10px;
             text-align: center;
+            min-height: clamp(50px, 8vh, 65px);
+            transition: border-color 0.3s ease;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #55ff55;
+            box-shadow: 0 0 10px rgba(85, 255, 85, 0.3);
         }
         
         .action-button {
-            padding: 12px 25px;
-            font-size: 18px;
+            padding: clamp(12px, 3vw, 18px) clamp(25px, 6vw, 35px);
+            font-size: clamp(16px, 4vw, 20px);
             background: linear-gradient(45deg, #33cc33, #27ae60);
             border: none;
-            border-radius: 8px;
+            border-radius: 10px;
             color: white;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all 0.3s ease;
+            min-height: clamp(55px, 10vh, 75px);
+            font-weight: bold;
+            min-width: clamp(140px, 35vw, 180px);
         }
         
-        .action-button:hover {
-            transform: scale(1.05);
-            box-shadow: 0 0 15px rgba(0, 255, 0, 0.4);
+        .action-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 15px rgba(0, 255, 0, 0.4);
+        }
+        
+        .action-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
         }
         
         .game-code {
-            font-size: 28px;
+            font-size: clamp(24px, 8vw, 36px);
             font-weight: bold;
             color: #33ff33;
             margin: 20px 0;
-            padding: 15px;
+            padding: clamp(15px, 4vw, 25px);
             background-color: #333;
-            border-radius: 8px;
+            border-radius: 10px;
             display: inline-block;
             box-shadow: 0 0 15px rgba(0, 255, 0, 0.4);
+            letter-spacing: 2px;
         }
         
         .copy-button {
-            padding: 8px 15px;
-            font-size: 16px;
+            padding: clamp(10px, 2vw, 15px) clamp(20px, 5vw, 25px);
+            font-size: clamp(14px, 3vw, 18px);
             background: linear-gradient(45deg, #3366cc, #2980b9);
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             color: white;
             cursor: pointer;
             margin-bottom: 30px;
-            transition: all 0.2s;
+            transition: all 0.3s ease;
+            min-height: clamp(50px, 8vh, 60px);
+            font-weight: bold;
         }
         
         .copy-button:hover {
-            transform: scale(1.05);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(51, 102, 204, 0.4);
         }
         
         .status-message {
-            font-size: 18px;
+            font-size: clamp(16px, 4vw, 20px);
             margin: 20px 0;
             color: #ffff55;
+            font-weight: bold;
+        }
+
+        .player-count {
+            font-size: clamp(18px, 5vw, 24px);
+            margin: 15px 0;
+            color: #33ff33;
             font-weight: bold;
         }
         
@@ -147,6 +215,7 @@
             margin: 10px 0;
             font-weight: bold;
             display: none;
+            font-size: clamp(14px, 3vw, 18px);
         }
 
         .debug-info {
@@ -156,7 +225,7 @@
             margin: 20px 0;
             border-radius: 5px;
             font-family: monospace;
-            font-size: 12px;
+            font-size: clamp(10px, 2vw, 12px);
             text-align: left;
             max-height: 200px;
             overflow-y: auto;
@@ -171,220 +240,398 @@
         .pulse {
             animation: pulse 2s infinite;
         }
+
+        /* GAME STYLES - responsive sizing only */
+        .game-container {
+            display: none;
+            flex-direction: column;
+            width: 100vw;
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+            background-color: #1a1a1a;
+            z-index: 1000;
+            padding: clamp(5px, 1vw, 15px);
+        }
+
+        .scoreboard {
+            display: flex;
+            justify-content: space-between;
+            padding: clamp(8px, 2vw, 15px);
+            margin-bottom: clamp(5px, 1vh, 10px);
+            background-color: #333;
+            border-radius: 8px;
+            color: white;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+
+        .profile {
+            padding: clamp(6px, 2vw, 12px) clamp(10px, 3vw, 18px);
+            border-radius: 6px;
+            font-size: clamp(12px, 3vw, 18px);
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+            margin: 5px;
+        }
+
+        .profile.left {
+            background-color: rgba(255, 0, 0, 0.25);
+            border: 2px solid #ff3333;
+        }
+
+        .profile.right {
+            background-color: rgba(0, 0, 255, 0.25);
+            border: 2px solid #3333ff;
+        }
+
+        #phaser-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            aspect-ratio: 4/3;
+            margin: 0 auto;
+            background-color: #2d2d2d;
+            border: 4px solid #555;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+            overflow: hidden;
+            flex: 1;
+            min-height: 300px;
+            max-height: 300px;
+        }
+
+        canvas {
+            width: 100% !important;
+            height: 100% !important;
+            display: block !important;
+        }
+
+        .waiting-message {
+            color: white;
+            font-size: clamp(16px, 4vw, 24px);
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: block;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: clamp(12px, 3vw, 20px);
+            border-radius: 10px;
+            z-index: 50;
+            width: 80%;
+            max-width: 320px;
+            text-align: center;
+        }
+
+        .timers {
+            position: absolute;
+            top: clamp(8px, 2vh, 15px);
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            color: white;
+            font-size: clamp(14px, 3vw, 20px);
+            font-weight: bold;
+            z-index: 100;
+            text-shadow: 0 0 5px rgba(0, 0, 0, 0.7);
+        }
+
+        .main-timer {
+            margin-bottom: 5px;
+            transition: color 0.3s ease;
+        }
+
+        .food-timer {
+            font-size: clamp(12px, 2.5vw, 16px);
+            color: #ffff00;
+            transition: color 0.3s ease;
+        }
+
+        .shake {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        .timer-warning {
+            color: #ff5555;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translateX(-1px); }
+            20%, 80% { transform: translateX(2px); }
+            30%, 50%, 70% { transform: translateX(-4px); }
+            40%, 60% { transform: translateX(4px); }
+        }
+
+        /* Touch controls - responsive sizing */
+        .controls-container {
+            position: absolute;
+            bottom: clamp(15px, 4vh, 30px);
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            justify-content: center;
+            z-index: 100;
+            width: clamp(180px, 40vw, 250px);
+            height: clamp(180px, 40vw, 250px);
+        }
+
+        .player-controls {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .control-btn {
+            position: absolute !important;
+            width: clamp(50px, 12vw, 70px) !important;
+            height: clamp(50px, 12vw, 70px) !important;
+            border-radius: 50% !important;
+            border: 2px solid rgba(255, 255, 255, 0.7) !important;
+            background-color: rgba(50, 50, 50, 0.6) !important;
+            color: white !important;
+            cursor: pointer !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            font-size: clamp(20px, 5vw, 28px) !important;
+            transition: all 0.2s !important;
+            touch-action: manipulation !important;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.4) !important;
+            -webkit-tap-highlight-color: transparent !important;
+            user-select: none !important;
+            -webkit-user-select: none !important;
+        }
+
+        .control-btn:active, .control-btn.active {
+            background-color: rgba(0, 255, 0, 0.6) !important;
+        }
+
+        .up { 
+            top: 0 !important; 
+            left: 50% !important; 
+            transform: translateX(-50%) !important; 
+        }
         
-        @media (max-width: 600px) {
-            .container {
-                width: 95%;
-                padding: 15px;
-            }
-            
+        .down { 
+            bottom: 0 !important; 
+            left: 50% !important; 
+            transform: translateX(-50%) !important; 
+        }
+        
+        .left { 
+            top: 50% !important; 
+            left: 0 !important; 
+            transform: translateY(-50%) !important; 
+        }
+        
+        .right { 
+            top: 50% !important; 
+            right: 0 !important; 
+            transform: translateY(-50%) !important; 
+        }
+
+        /* Show controls on all devices for testing */
+        .controls-container {
+            display: flex !important;
+        }
+
+        /* Game popups - responsive sizing */
+        .game-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.3);
+            display: none;
+            z-index: 90;
+            pointer-events: auto;
+        }
+        
+        .result-popup {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(20, 20, 20, 0.85);
+            padding: clamp(15px, 4vw, 25px);
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+            color: white;
+            width: clamp(280px, 85vw, 400px);
+            z-index: 1000;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+            border: 2px solid rgba(0, 255, 0, 0.3);
+        }
+
+        .result-popup h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: clamp(18px, 5vw, 28px);
+            color: white;
+            text-shadow: 0 0 8px rgba(0, 255, 0, 0.5);
+        }
+
+        .score-line {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: clamp(14px, 3vw, 18px);
+        }
+        
+        .score-line.you {
+            font-weight: bold;
+            color: #55ff55;
+        }
+
+        .popup-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+            gap: clamp(8px, 2vw, 15px);
+        }
+        
+        .play-again-btn, .quit-btn {
+            padding: clamp(8px, 2vw, 12px) 0;
+            width: 48%;
+            font-size: clamp(14px, 3vw, 18px);
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+            min-height: clamp(40px, 8vh, 50px);
+        }
+        
+        .play-again-btn {
+            background: linear-gradient(45deg, #33cc33, #27ae60);
+        }
+        
+        .quit-btn {
+            background: linear-gradient(45deg, #ff3333, #c0392b);
+        }
+        
+        .play-again-btn:hover, .quit-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+
+        /* Mobile responsive breakpoints - FIXED BUTTON RESPONSIVENESS */
+        @media (max-width: 768px) {
             .button-container {
                 flex-direction: column;
                 align-items: center;
+                gap: clamp(15px, 4vw, 20px);
             }
             
             .big-button {
-                width: 80%;
-                margin-bottom: 15px;
+                width: 100%;
+                max-width: 280px;
+                min-width: unset;
             }
+            
+            .action-button {
+                width: 100%;
+                max-width: 280px;
+                min-width: unset;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                width: 95%;
+                padding: clamp(12px, 4vw, 20px);
+            }
+        }
+
+        /* Touch action for all interactive elements */
+        * { 
+            touch-action: manipulation;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Glow Snake Multiplayer</h1>
-        <p>Challenge your friends in a glowing snake duel! Create a game room or join an existing one with a room code.</p>
-        
-        <div class="button-container">
-            <button id="createButton" class="big-button">Create Game</button>
-            <button id="joinButton" class="big-button">Join Game</button>
+    <!-- LOBBY PAGE -->
+    <div id="lobbyPage" class="lobby-container">
+        <div class="container">
+            <h1>Glow Snake Multiplayer</h1>
+            <p>Challenge your friends in a glowing snake duel! Create a game room or join an existing one with a room code.</p>
+            
+            <div class="button-container">
+                <button id="createButton" class="big-button">Create Game</button>
+                <button id="joinButton" class="big-button">Join Game</button>
+            </div>
+            
+            <!-- Create Game Form -->
+            <div id="createForm" class="form-container">
+                <div class="status-message">Your game room code:</div>
+                <div id="gameCode" class="game-code pulse"></div>
+                <button id="copyButton" class="copy-button">Copy Code</button>
+                <div class="player-count" id="playerCount">Players: 1/2</div>
+                <div class="status-message" id="waitingStatus">Waiting for opponent to join...</div>
+                <button id="startGameButton" class="action-button" disabled>Start Game</button>
+            </div>
+            
+            <!-- Join Game Form -->
+            <div id="joinForm" class="form-container">
+                <div class="status-message">Enter the room code to join:</div>
+                <input type="text" id="roomCodeInput" placeholder="Enter room code" maxlength="8">
+                <div id="joinError" class="error-message">Invalid room code. Please try again.</div>
+                <button id="joinGameButton" class="action-button">Join Game</button>
+            </div>
         </div>
-        
-        <!-- Create Game Form -->
-        <div id="createForm" class="form-container">
-            <div class="status-message">Your game room code:</div>
-            <div id="gameCode" class="game-code pulse"></div>
-            <button id="copyButton" class="copy-button">Copy Code</button>
-            <div class="status-message">Waiting for opponent to join...</div>
-            <button id="startGameButton" class="action-button">Start Game</button>
-        </div>
-        
-        <!-- Join Game Form -->
-        <div id="joinForm" class="form-container">
-            <div class="status-message">Enter the room code to join:</div>
-            <input type="text" id="roomCodeInput" placeholder="Enter room code" maxlength="8">
-            <div id="joinError" class="error-message">Invalid room code. Please try again.</div>
-            <button id="joinGameButton" class="action-button">Join Game</button>
-        </div>
+    </div>
 
-        <!-- Debug Info -->
-        <div class="debug-info" id="debugInfo">
-            Debug Info:<br>
-            Socket Status: <span id="socketStatus">Disconnected</span><br>
-            <div id="debugLog"></div>
+    <!-- GAME PAGE -->
+    <div id="gameContainer" class="game-container">
+        <div class="scoreboard">
+            <div class="profile left" id="profileLeft">Waiting for Player 1</div>
+            <div class="profile right" id="profileRight">Waiting for Player 2</div>
+        </div>
+        
+        <div id="phaser-container">
+            <div class="timers">
+                <div id="mainTimer" class="main-timer">Time: 60</div>
+                <div id="foodTimer" class="food-timer">Food: 10</div>
+            </div>
+            <div class="waiting-message" id="waitingMessage">
+                Waiting for another player to join...
+            </div>
+            
+            <div class="controls-container">
+                <div class="player-controls">
+                    <button class="control-btn up" id="upButton" data-direction="UP">↑</button>
+                    <button class="control-btn left" id="leftButton" data-direction="LEFT">←</button>
+                    <button class="control-btn right" id="rightButton" data-direction="RIGHT">→</button>
+                    <button class="control-btn down" id="downButton" data-direction="DOWN">↓</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="game-overlay" id="gameOverlay"></div>
+        
+        <div class="result-popup" id="resultPopup">
+            <h2 id="resultTitle">Game Over!</h2>
+            <div id="scoreDisplay">
+                <div class="score-line you">
+                    <span>You:</span>
+                    <span id="yourScore">0</span>
+                </div>
+                <div class="score-line">
+                    <span>Opponent:</span>
+                    <span id="opponentScore">0</span>
+                </div>
+            </div>
+            <div class="popup-buttons">
+                <button class="play-again-btn" onclick="handleRematch()">Play Again</button>
+                <button class="quit-btn" onclick="handleQuit()">Quit</button>
+            </div>
         </div>
     </div>
     
-    <script>
-        // Debug logging
-        function debugLog(message) {
-            console.log(message);
-            const debugLogDiv = document.getElementById('debugLog');
-            debugLogDiv.innerHTML += new Date().toLocaleTimeString() + ': ' + message + '<br>';
-            debugLogDiv.scrollTop = debugLogDiv.scrollHeight;
-        }
-
-        // Connect to Socket.io server
-        debugLog('Attempting to connect to socket...');
-        const socket = io();
-        let roomCode = null;
-        
-        // DOM elements
-        const createButton = document.getElementById('createButton');
-        const joinButton = document.getElementById('joinButton');
-        const createForm = document.getElementById('createForm');
-        const joinForm = document.getElementById('joinForm');
-        const gameCodeElement = document.getElementById('gameCode');
-        const copyButton = document.getElementById('copyButton');
-        const roomCodeInput = document.getElementById('roomCodeInput');
-        const joinGameButton = document.getElementById('joinGameButton');
-        const startGameButton = document.getElementById('startGameButton');
-        const joinError = document.getElementById('joinError');
-        const socketStatus = document.getElementById('socketStatus');
-
-        // Check if UUID is available
-        if (typeof uuid === 'undefined') {
-            debugLog('ERROR: UUID library not loaded!');
-        } else {
-            debugLog('UUID library loaded successfully');
-        }
-        
-        // Show create game form
-        createButton.addEventListener('click', () => {
-            debugLog('Create button clicked');
-            createForm.style.display = 'flex';
-            joinForm.style.display = 'none';
-            
-            // Generate a room code (using first 8 chars of UUID v4)
-            try {
-                roomCode = uuid.v4().substring(0, 8);
-                gameCodeElement.textContent = roomCode;
-                debugLog('Generated room code: ' + roomCode);
-                
-                // Create a room on the server
-                socket.emit('createRoom', { roomCode });
-                debugLog('Sent createRoom event to server');
-            } catch (error) {
-                debugLog('ERROR generating room code: ' + error.message);
-            }
-        });
-        
-        // Show join game form
-        joinButton.addEventListener('click', () => {
-            debugLog('Join button clicked');
-            joinForm.style.display = 'flex';
-            createForm.style.display = 'none';
-        });
-        
-        // Copy room code
-        copyButton.addEventListener('click', () => {
-            debugLog('Copy button clicked');
-            navigator.clipboard.writeText(roomCode).then(() => {
-                copyButton.textContent = 'Copied!';
-                debugLog('Room code copied to clipboard');
-                setTimeout(() => {
-                    copyButton.textContent = 'Copy Code';
-                }, 2000);
-            }).catch(err => {
-                debugLog('ERROR copying to clipboard: ' + err.message);
-            });
-        });
-        
-        // Join a game
-        joinGameButton.addEventListener('click', () => {
-            const code = roomCodeInput.value.trim();
-            debugLog('Join game button clicked with code: ' + code);
-            
-            if (code.length < 1) {
-                joinError.textContent = 'Please enter a room code.';
-                joinError.style.display = 'block';
-                debugLog('ERROR: Empty room code');
-                return;
-            }
-            
-            roomCode = code;
-            socket.emit('joinRoom', { roomCode });
-            debugLog('Sent joinRoom event to server with code: ' + roomCode);
-        });
-        
-        // Start game button (after creating a room)
-        startGameButton.addEventListener('click', () => {
-            debugLog('Start game button clicked with room code: ' + roomCode);
-            if (roomCode) {
-                const gameUrl = '/?room=' + roomCode;
-                debugLog('Redirecting to: ' + gameUrl);
-                window.location.href = gameUrl;
-            } else {
-                debugLog('ERROR: No room code available');
-            }
-        });
-        
-        // Socket events
-        socket.on('connect', () => {
-            debugLog('Connected to server with ID: ' + socket.id);
-            socketStatus.textContent = 'Connected (' + socket.id + ')';
-        });
-
-        socket.on('disconnect', () => {
-            debugLog('Disconnected from server');
-            socketStatus.textContent = 'Disconnected';
-        });
-
-        socket.on('connect_error', (error) => {
-            debugLog('Connection error: ' + error.message);
-            socketStatus.textContent = 'Connection Error';
-        });
-        
-        // Room created successfully
-        socket.on('roomCreated', (data) => {
-            debugLog('Room created successfully: ' + JSON.stringify(data));
-        });
-        
-        // When someone joins the room
-        socket.on('playerJoinedRoom', (data) => {
-            debugLog('Player joined room: ' + JSON.stringify(data));
-            
-            // If we're the host, we can now start the game
-            if (createForm.style.display === 'flex') {
-                startGameButton.classList.add('pulse');
-                document.querySelector('#createForm .status-message').textContent = 'Opponent joined! Ready to start the game.';
-                debugLog('Opponent joined, ready to start game');
-            }
-        });
-        
-        // Room join response
-        socket.on('roomJoined', (data) => {
-            debugLog('Successfully joined room: ' + JSON.stringify(data));
-            
-            // Redirect to game page
-            const gameUrl = '/?room=' + roomCode;
-            debugLog('Redirecting to game: ' + gameUrl);
-            window.location.href = gameUrl;
-        });
-        
-        // Room join error
-        socket.on('roomError', (data) => {
-            debugLog('Room error: ' + JSON.stringify(data));
-            joinError.textContent = data.message;
-            joinError.style.display = 'block';
-        });
-
-        // Log all socket events for debugging
-        socket.onAny((eventName, ...args) => {
-            debugLog('Socket event received: ' + eventName + ' with data: ' + JSON.stringify(args));
-        });
-
-        debugLog('Lobby script loaded successfully');
-    </script>
+    <script src="game.js"></script>
 </body>
-</html> 
+</html>
